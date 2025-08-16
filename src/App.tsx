@@ -7,28 +7,70 @@ import ThreatActors from './components/ThreatActors';
 import AttackStats from './components/AttackStats';
 import { Attack, ThreatActor } from './types/attack';
 import { generateMockAttack, mockThreatActors } from './data/mockData';
+import { realAttackDataService } from './data/realAttackData';
 
 function App() {
   const [attacks, setAttacks] = useState<Attack[]>([]);
   const [threatActors, setThreatActors] = useState<ThreatActor[]>(mockThreatActors);
   const [activeView, setActiveView] = useState<'map' | 'feed' | 'actors' | 'stats'>('map');
   const [isLive, setIsLive] = useState(true);
+  const [dataSource, setDataSource] = useState<'mock' | 'real'>('mock');
+  const [isLoadingRealData, setIsLoadingRealData] = useState(false);
 
   useEffect(() => {
-    // Generate initial attacks
-    const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
-    setAttacks(initialAttacks);
+    if (dataSource === 'mock') {
+      // Generate initial mock attacks
+      const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
+      setAttacks(initialAttacks);
+    } else {
+      // Start real-time data collection
+      realAttackDataService.startRealTimeCollection();
+    }
 
-    // Set up live attack generation
+    return () => {
+      if (dataSource === 'real') {
+        realAttackDataService.stopRealTimeCollection();
+      }
+    };
+  }, [dataSource]);
+
+  useEffect(() => {
+    // Set up live attack generation/collection
     const interval = setInterval(() => {
       if (isLive) {
-        const newAttack = generateMockAttack();
-        setAttacks(prev => [newAttack, ...prev.slice(0, 99)]); // Keep last 100 attacks
+        if (dataSource === 'mock') {
+          const newAttack = generateMockAttack();
+          setAttacks(prev => [newAttack, ...prev.slice(0, 99)]); // Keep last 100 attacks
+        } else {
+          // Get real-time attacks from queue
+          const newAttacks = realAttackDataService.getQueuedAttacks();
+          if (newAttacks.length > 0) {
+            setAttacks(prev => [...newAttacks, ...prev.slice(0, 100 - newAttacks.length)]);
+          }
+        }
       }
-    }, 2000);
+    }, dataSource === 'mock' ? 2000 : 1000); // Real data updates faster
 
     return () => clearInterval(interval);
-  }, [isLive]);
+  }, [isLive, dataSource]);
+
+  const toggleDataSource = async () => {
+    if (dataSource === 'mock') {
+      setIsLoadingRealData(true);
+      setDataSource('real');
+      // Clear existing mock data
+      setAttacks([]);
+      // Start real data collection
+      realAttackDataService.startRealTimeCollection();
+      setTimeout(() => setIsLoadingRealData(false), 2000);
+    } else {
+      realAttackDataService.stopRealTimeCollection();
+      setDataSource('mock');
+      // Generate initial mock attacks
+      const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
+      setAttacks(initialAttacks);
+    }
+  };
 
   const activeAttacks = attacks.filter(attack => attack.status === 'active').length;
   const blockedAttacks = attacks.filter(attack => attack.status === 'blocked').length;
@@ -49,9 +91,24 @@ function App() {
           
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2 text-sm">
-              <div className="flex items-center space-x-1">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span>Live</span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={toggleDataSource}
+                  disabled={isLoadingRealData}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                    dataSource === 'real'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  } ${isLoadingRealData ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isLoadingRealData ? 'Loading...' : dataSource === 'real' ? '🔴 REAL DATA' : 'MOCK DATA'}
+                </button>
+                <div className="flex items-center space-x-1">
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${
+                    dataSource === 'real' ? 'bg-red-400' : 'bg-green-400'
+                  }`}></div>
+                  <span>{isLive ? 'Live' : 'Paused'}</span>
+                </div>
               </div>
               <button
                 onClick={() => setIsLive(!isLive)}

@@ -4,7 +4,7 @@ import * as d3 from 'd3';
 import { geoPath, geoNaturalEarth1 } from 'd3-geo';
 import { feature } from 'topojson-client';
 import { Attack } from '../types/attack';
-import { AlertTriangle, Shield, Activity, TrendingUp, MapPin, Zap, Target } from 'lucide-react';
+import { AlertTriangle, Shield, Activity, TrendingUp, MapPin, Zap, Target, Wifi } from 'lucide-react';
 
 interface WorldMapProps {
   attacks: Attack[];
@@ -28,6 +28,8 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
   const [countryStats, setCountryStats] = useState<Record<string, CountryStats>>({});
   const [activeAnimations, setActiveAnimations] = useState<any[]>([]);
   const [liveAttackCount, setLiveAttackCount] = useState(0);
+  const [isLoadingRealData, setIsLoadingRealData] = useState(false);
+  const [dataSource, setDataSource] = useState<'mock' | 'real'>('mock');
 
   // Load world topology data
   useEffect(() => {
