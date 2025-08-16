@@ -222,7 +222,7 @@ export class RealAttackDataService {
       
       const response = await fetch(`${CORS_PROXY}${greynoiseUrl}`, {
         headers: {
-          'key': GREYNOISE_API_KEY,
+          'X-API-Key': GREYNOISE_API_KEY,
           'Content-Type': 'application/json'
         }
       });
