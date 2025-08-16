@@ -345,6 +345,35 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
     
     if (!sourcePoint || !targetPoint) return;
 
+    // Add country labels for the attack
+    const midPoint = [
+      (sourcePoint[0] + targetPoint[0]) / 2,
+      (sourcePoint[1] + targetPoint[1]) / 2
+    ];
+
+    // Create attack label showing source → target
+    const attackLabel = svg.append('text')
+      .attr('x', midPoint[0])
+      .attr('y', midPoint[1] - 10)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '10px')
+      .attr('font-weight', 'bold')
+      .attr('fill', getSeverityColor(attack.severity))
+      .attr('opacity', 0)
+      .text(`${attack.sourceCountry} → ${attack.targetCountry}`)
+      .style('pointer-events', 'none')
+      .attr('filter', 'url(#glow)');
+
+    // Animate label appearance
+    attackLabel.transition()
+      .duration(500)
+      .attr('opacity', 0.9)
+      .transition()
+      .delay(1500)
+      .duration(1000)
+      .attr('opacity', 0)
+      .remove();
+
     // Create attack beam line
     const line = svg.append('line')
       .attr('x1', sourcePoint[0])

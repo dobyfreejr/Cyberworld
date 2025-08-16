@@ -67,7 +67,7 @@ const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-xl p-6 shadow-2xl border border-gray-700"
+      className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 h-full p-6 shadow-2xl border-l border-gray-700"
     >
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -81,7 +81,7 @@ const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as any)}
-            className="bg-gray-700 text-white px-3 py-2 rounded-lg text-sm border border-gray-600 focus:border-cyan-500 focus:outline-none"
+            className="bg-gray-700 text-white px-2 py-1 rounded-lg text-xs border border-gray-600 focus:border-cyan-500 focus:outline-none"
           >
             <option value="all">All Types</option>
             <option value="nation-state">Nation State</option>
@@ -93,7 +93,7 @@ const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-gray-700 text-white px-3 py-2 rounded-lg text-sm border border-gray-600 focus:border-cyan-500 focus:outline-none"
+            className="bg-gray-700 text-white px-2 py-1 rounded-lg text-xs border border-gray-600 focus:border-cyan-500 focus:outline-none"
           >
             <option value="activeAttacks">Active Attacks</option>
             <option value="totalAttacks">Total Attacks</option>
@@ -102,7 +102,7 @@ const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto custom-scrollbar">
+      <div className="grid grid-cols-1 gap-3 h-[calc(100%-120px)] overflow-y-auto custom-scrollbar">
         {sortedActors.map((actor, index) => (
           <motion.div
             key={actor.id}

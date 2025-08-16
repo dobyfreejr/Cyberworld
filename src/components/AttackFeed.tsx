@@ -76,7 +76,7 @@ const AttackFeed: React.FC<AttackFeedProps> = ({ attacks }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-xl p-6 shadow-2xl border border-gray-700"
+      className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 h-full p-6 shadow-2xl border-l border-gray-700"
     >
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -95,7 +95,7 @@ const AttackFeed: React.FC<AttackFeedProps> = ({ attacks }) => {
             <button
               key={key}
               onClick={() => setFilter(key as any)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                 filter === key
                   ? 'bg-cyan-600 text-white shadow-lg'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -107,7 +107,7 @@ const AttackFeed: React.FC<AttackFeedProps> = ({ attacks }) => {
         </div>
       </div>
 
-      <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar">
+      <div className="space-y-3 h-[calc(100%-120px)] overflow-y-auto custom-scrollbar">
         <AnimatePresence>
           {visibleAttacks.map((attack, index) => (
             <motion.div

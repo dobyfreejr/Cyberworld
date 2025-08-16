@@ -163,21 +163,31 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="p-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeView}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            {activeView === 'map' && <WorldMap attacks={attacks} />}
-            {activeView === 'feed' && <AttackFeed attacks={attacks} />}
-            {activeView === 'actors' && <ThreatActors threatActors={threatActors} />}
-            {activeView === 'stats' && <AttackStats attacks={attacks} />}
-          </motion.div>
-        </AnimatePresence>
+      <main className="flex h-[calc(100vh-140px)]">
+        {/* Always visible map */}
+        <div className="flex-1">
+          <WorldMap attacks={attacks} />
+        </div>
+        
+        {/* Side panel for other views */}
+        {activeView !== 'map' && (
+          <div className="w-1/3 min-w-[400px] border-l border-gray-700">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeView}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.3 }}
+                className="h-full overflow-hidden"
+              >
+                {activeView === 'feed' && <AttackFeed attacks={attacks} />}
+                {activeView === 'actors' && <ThreatActors threatActors={threatActors} />}
+                {activeView === 'stats' && <AttackStats attacks={attacks} />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        )}
       </main>
     </div>
   );
