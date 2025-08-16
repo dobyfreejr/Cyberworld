@@ -4,6 +4,10 @@ import { Attack } from '../types/attack';
 const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f0857310b';
 const OTX_BASE_URL = 'https://otx.alienvault.com/api/v1';
 
+// GreyNoise API configuration
+const GREYNOISE_API_KEY = 'YOUR_GREYNOISE_API_KEY'; // User needs to provide this
+const GREYNOISE_BASE_URL = 'https://api.greynoise.io/v3';
+
 // CORS proxy for API calls (since OTX doesn't support CORS)
 const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
@@ -144,6 +148,45 @@ interface OTXPulse {
   indicators: OTXIndicator[];
 }
 
+interface GreyNoiseResponse {
+  data: GreyNoiseRecord[];
+  complete: boolean;
+  count: number;
+  query: string;
+  scroll: string;
+}
+
+interface GreyNoiseRecord {
+  ip: string;
+  first_seen: string;
+  last_seen: string;
+  seen: boolean;
+  tags: string[];
+  actor: string;
+  spoofable: boolean;
+  classification: 'malicious' | 'benign' | 'unknown';
+  cve: string[];
+  metadata: {
+    asn: string;
+    city: string;
+    country: string;
+    country_code: string;
+    organization: string;
+    category: string;
+    tor: boolean;
+    rdns: string;
+    os: string;
+  };
+  raw_data: {
+    scan: Array<{
+      port: number;
+      protocol: string;
+    }>;
+    web: any;
+    ja3: any[];
+  };
+}
+
 interface OTXIndicator {
   id: number;
   indicator: string;
@@ -162,6 +205,135 @@ export class RealAttackDataService {
   private lastFetchTime = 0;
   private pulseCache: OTXPulse[] = [];
 
+  // Fetch real-time scanning activity from GreyNoise
+  async fetchGreyNoiseData(): Promise<Attack[]> {
+    try {
+      console.log('🔍 Fetching real-time scanning data from GreyNoise...');
+      
+      // Query for recent malicious activity
+      const query = 'classification:malicious last_seen:1d';
+      const greynoiseUrl = `${GREYNOISE_BASE_URL}/experimental/gnql?query=${encodeURIComponent(query)}&size=50`;
+      
+      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(greynoiseUrl)}`, {
+        headers: {
+          'key': GREYNOISE_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`GreyNoise API error: ${response.status}`);
+      }
+
+      const data: GreyNoiseResponse = await response.json();
+      console.log('📊 GreyNoise Data received:', data);
+
+      if (data.data && Array.isArray(data.data)) {
+        return this.convertGreyNoiseDataToAttacks(data.data);
+      } else {
+        console.warn('⚠️ No GreyNoise data available');
+        return [];
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch GreyNoise data:', error);
+      return [];
+    }
+  }
+
+  private convertGreyNoiseDataToAttacks(records: GreyNoiseRecord[]): Attack[] {
+    const attacks: Attack[] = [];
+    const currentTime = new Date();
+
+    records.forEach(record => {
+      // Skip if no country information
+      if (!record.metadata?.country) return;
+
+      const sourceCountry = record.metadata.country;
+      const targetCountry = this.getRandomTargetCountry();
+
+      // Determine attack type from GreyNoise tags and metadata
+      const attackType = this.determineAttackTypeFromGreyNoise(record);
+      
+      // Determine severity from classification and tags
+      const severity = this.determineSeverityFromGreyNoise(record);
+
+      // Get port information from scan data
+      const scanData = record.raw_data?.scan || [];
+      const port = scanData.length > 0 ? scanData[0].port : this.getCommonPort();
+      const protocol = scanData.length > 0 ? scanData[0].protocol.toUpperCase() : this.getRandomProtocol();
+
+      const attack: Attack = {
+        id: `greynoise-${record.ip.replace(/\./g, '-')}-${Date.now()}`,
+        timestamp: new Date(record.last_seen || currentTime),
+        sourceCountry,
+        targetCountry,
+        attackType,
+        severity,
+        status: record.classification === 'malicious' ? 'active' : 'blocked',
+        sourceIP: record.ip,
+        targetIP: this.generateRealisticIP(targetCountry),
+        port,
+        protocol,
+        threatActor: record.actor || (Math.random() < 0.2 ? this.assignThreatActor(sourceCountry, '') : undefined)
+      };
+
+      attacks.push(attack);
+    });
+
+    console.log(`✅ Generated ${attacks.length} attacks from GreyNoise data`);
+    return attacks;
+  }
+
+  private determineAttackTypeFromGreyNoise(record: GreyNoiseRecord): string {
+    const tags = record.tags || [];
+    const category = record.metadata?.category || '';
+    
+    // Map GreyNoise tags to attack types
+    for (const tag of tags) {
+      const lowerTag = tag.toLowerCase();
+      if (lowerTag.includes('scanner')) return 'Port Scanning';
+      if (lowerTag.includes('bruteforce') || lowerTag.includes('brute')) return 'Brute Force Attack';
+      if (lowerTag.includes('botnet')) return 'Botnet Activity';
+      if (lowerTag.includes('malware')) return 'Malware C&C Communication';
+      if (lowerTag.includes('exploit')) return 'Vulnerability Exploitation';
+      if (lowerTag.includes('worm')) return 'Malware C&C Communication';
+      if (lowerTag.includes('trojan')) return 'Command & Control Traffic';
+      if (lowerTag.includes('miner') || lowerTag.includes('mining')) return 'Cryptocurrency Mining';
+    }
+
+    // Map by category
+    if (category.toLowerCase().includes('scanner')) return 'Port Scanning';
+    if (category.toLowerCase().includes('malware')) return 'Malware C&C Communication';
+    
+    // Default based on scan activity
+    const scanData = record.raw_data?.scan || [];
+    if (scanData.some(s => [22, 3389].includes(s.port))) return 'Brute Force Attack';
+    if (scanData.some(s => [80, 443, 8080].includes(s.port))) return 'Vulnerability Exploitation';
+    
+    return 'Port Scanning'; // Most common GreyNoise activity
+  }
+
+  private determineSeverityFromGreyNoise(record: GreyNoiseRecord): Attack['severity'] {
+    const tags = record.tags || [];
+    const classification = record.classification;
+    const cveCount = record.cve?.length || 0;
+    
+    // High severity indicators
+    if (classification === 'malicious') {
+      if (cveCount > 0) return Math.random() < 0.6 ? 'critical' : 'high';
+      if (tags.some(tag => tag.toLowerCase().includes('exploit'))) return 'high';
+      if (tags.some(tag => tag.toLowerCase().includes('botnet'))) return 'high';
+      return Math.random() < 0.3 ? 'high' : 'medium';
+    }
+    
+    // Default for scanning activity
+    const rand = Math.random();
+    if (rand < 0.05) return 'critical';
+    if (rand < 0.20) return 'high';
+    if (rand < 0.60) return 'medium';
+    return 'low';
+  }
+
   static getInstance(): RealAttackDataService {
     if (!RealAttackDataService.instance) {
       RealAttackDataService.instance = new RealAttackDataService();
@@ -172,7 +344,34 @@ export class RealAttackDataService {
   // Fetch real threat intelligence from OTX
   async fetchRealTimeAttacks(): Promise<Attack[]> {
     try {
-      console.log('🔍 Fetching real threat data from AlienVault OTX...');
+      console.log('🔍 Fetching real threat data from multiple sources...');
+      
+      // Fetch from both OTX and GreyNoise in parallel
+      const [otxAttacks, greynoiseAttacks] = await Promise.all([
+        this.fetchOTXData(),
+        this.fetchGreyNoiseData()
+      ]);
+      
+      // Combine attacks from both sources
+      const combinedAttacks = [...otxAttacks, ...greynoiseAttacks];
+      
+      if (combinedAttacks.length > 0) {
+        console.log(`✅ Combined ${otxAttacks.length} OTX + ${greynoiseAttacks.length} GreyNoise attacks`);
+        return combinedAttacks;
+      } else {
+        console.warn('⚠️ No real data available, generating realistic attacks');
+        return this.generateRealisticAttacks();
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch real data:', error);
+      console.log('🔄 Falling back to realistic attack simulation');
+      return this.generateRealisticAttacks();
+    }
+  }
+
+  private async fetchOTXData(): Promise<Attack[]> {
+    try {
+      console.log('🔍 Fetching threat data from AlienVault OTX...');
       
       // Fetch recent pulses (threat intelligence reports)
       const pulsesUrl = `${OTX_BASE_URL}/pulses/subscribed?limit=20&page=1`;
@@ -194,13 +393,12 @@ export class RealAttackDataService {
         this.pulseCache = data.results;
         return this.convertOTXDataToAttacks(data.results);
       } else {
-        console.warn('⚠️ No results in OTX response, generating realistic attacks');
-        return this.generateRealisticAttacks();
+        console.warn('⚠️ No results in OTX response');
+        return [];
       }
     } catch (error) {
       console.error('❌ Failed to fetch OTX data:', error);
-      console.log('🔄 Falling back to realistic attack simulation');
-      return this.generateRealisticAttacks();
+      return [];
     }
   }
 
@@ -450,18 +648,18 @@ export class RealAttackDataService {
     if (this.isActive) return;
     
     this.isActive = true;
-    console.log('🔴 Starting real-time cyber attack data collection from OTX...');
+    console.log('🔴 Starting real-time cyber attack data collection from OTX + GreyNoise...');
     
     // Initial fetch
     this.fetchRealTimeAttacks().then(attacks => {
       this.attackQueue.push(...attacks);
     });
     
-    // Fetch new data every 30 seconds (respecting API limits)
+    // Fetch new data every 45 seconds (respecting API limits for both services)
     setInterval(async () => {
       if (this.isActive) {
         const now = Date.now();
-        if (now - this.lastFetchTime > 30000) { // 30 second minimum between API calls
+        if (now - this.lastFetchTime > 45000) { // 45 second minimum between API calls
           const newAttacks = await this.fetchRealTimeAttacks();
           this.attackQueue.push(...newAttacks);
           this.lastFetchTime = now;
@@ -481,7 +679,7 @@ export class RealAttackDataService {
 
   stopRealTimeCollection(): void {
     this.isActive = false;
-    console.log('⏹️ Stopped real-time cyber attack data collection');
+    console.log('⏹️ Stopped real-time cyber attack data collection from OTX + GreyNoise');
   }
 
   getQueuedAttacks(): Attack[] {

@@ -58,7 +58,7 @@ function App() {
   const toggleDataSource = async () => {
     if (dataSource === 'mock') {
       setIsLoadingRealData(true);
-      console.log('🔄 Loading real threat intelligence from AlienVault OTX...');
+      console.log('🔄 Loading real threat intelligence from OTX + GreyNoise...');
       setDataSource('real');
       // Clear existing mock data
       setAttacks([]);
@@ -67,7 +67,7 @@ function App() {
       setTimeout(() => setIsLoadingRealData(false), 3000);
     } else {
       realAttackDataService.stopRealTimeCollection();
-      console.log('🔄 Switching back to mock data...');
+      console.log('🔄 Switching back to mock data from real sources...');
       setDataSource('mock');
       // Generate initial mock attacks
       const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
