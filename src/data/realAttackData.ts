@@ -5,7 +5,7 @@ const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f085
 const OTX_BASE_URL = 'https://otx.alienvault.com/api/v1';
 
 // GreyNoise API configuration
-const GREYNOISE_API_KEY = 'YOUR_GREYNOISE_API_KEY'; // User needs to provide this
+const GREYNOISE_API_KEY = ''; // User needs to provide this
 const GREYNOISE_BASE_URL = 'https://api.greynoise.io/v3';
 
 // CORS proxy for API calls (since OTX doesn't support CORS)
@@ -208,6 +208,12 @@ export class RealAttackDataService {
   // Fetch real-time scanning activity from GreyNoise
   async fetchGreyNoiseData(): Promise<Attack[]> {
     try {
+      // Skip GreyNoise if no API key is provided
+      if (!GREYNOISE_API_KEY || GREYNOISE_API_KEY === '') {
+        console.log('⚠️ GreyNoise API key not provided, skipping GreyNoise data');
+        return [];
+      }
+      
       console.log('🔍 Fetching real-time scanning data from GreyNoise...');
       
       // Query for recent malicious activity
