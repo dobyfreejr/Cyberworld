@@ -27,7 +27,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [countryStats, setCountryStats] = useState<Record<string, CountryStats>>({});
   const [activeAnimations, setActiveAnimations] = useState<any[]>([]);
-  const [liveAttackCount, setLiveAttackCount] = useState(0);
+  const [totalTrackedAttacks, setTotalTrackedAttacks] = useState(0);
   const [isLoadingRealData, setIsLoadingRealData] = useState(false);
   const [dataSource, setDataSource] = useState<'mock' | 'real'>('mock');
 
@@ -317,8 +317,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
         if (recentAttacks.length > 0) {
           const randomAttack = recentAttacks[Math.floor(Math.random() * recentAttacks.length)];
           animateAttackBeam(svg, randomAttack, projection);
-          animationCount++;
-          setLiveAttackCount(animationCount);
+          setTotalTrackedAttacks(prev => prev + 1);
         }
       }
 
@@ -519,7 +518,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
             </div>
             <div className="flex items-center space-x-2">
               <Zap className="w-4 h-4 text-cyan-400 animate-pulse" />
-              <span className="text-cyan-400 font-semibold">{liveAttackCount} Tracked</span>
+              <span className="text-cyan-400 font-semibold">{totalTrackedAttacks} Tracked</span>
             </div>
           </div>
         </div>
