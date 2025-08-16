@@ -5,7 +5,7 @@ const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f085
 const OTX_BASE_URL = 'https://otx.alienvault.com/api/v1';
 
 // GreyNoise API configuration
-const GREYNOISE_API_KEY = ''; // User needs to provide this
+const GREYNOISE_API_KEY = 'd5753663-cfb6-44c8-8fe6-431b266479b8';
 const GREYNOISE_BASE_URL = 'https://api.greynoise.io/v3';
 
 // CORS proxy for API calls (since OTX doesn't support CORS)
