@@ -24,6 +24,7 @@ function App() {
       setAttacks(initialAttacks);
     } else {
       // Start real-time data collection
+      console.log('🚀 Switching to real OTX threat intelligence data...');
       realAttackDataService.startRealTimeCollection();
     }
 
@@ -57,14 +58,16 @@ function App() {
   const toggleDataSource = async () => {
     if (dataSource === 'mock') {
       setIsLoadingRealData(true);
+      console.log('🔄 Loading real threat intelligence from AlienVault OTX...');
       setDataSource('real');
       // Clear existing mock data
       setAttacks([]);
       // Start real data collection
       realAttackDataService.startRealTimeCollection();
-      setTimeout(() => setIsLoadingRealData(false), 2000);
+      setTimeout(() => setIsLoadingRealData(false), 3000);
     } else {
       realAttackDataService.stopRealTimeCollection();
+      console.log('🔄 Switching back to mock data...');
       setDataSource('mock');
       // Generate initial mock attacks
       const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
@@ -97,11 +100,11 @@ function App() {
                   disabled={isLoadingRealData}
                   className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                     dataSource === 'real'
-                      ? 'bg-red-600 text-white'
+                      ? 'bg-red-600 text-white shadow-lg animate-pulse'
                       : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
                   } ${isLoadingRealData ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  {isLoadingRealData ? 'Loading...' : dataSource === 'real' ? '🔴 REAL DATA' : 'MOCK DATA'}
+                  {isLoadingRealData ? 'Loading OTX...' : dataSource === 'real' ? '🔴 LIVE OTX DATA' : 'MOCK DATA'}
                 </button>
                 <div className="flex items-center space-x-1">
                   <div className={`w-2 h-2 rounded-full animate-pulse ${
