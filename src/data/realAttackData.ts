@@ -216,11 +216,10 @@ export class RealAttackDataService {
       
       console.log('🔍 Fetching real-time scanning data from GreyNoise...');
       
-      // Query for recent malicious activity
-      const query = 'classification:malicious last_seen:1d';
-      const greynoiseUrl = `${GREYNOISE_BASE_URL}/community/gnql?query=${encodeURIComponent(query)}&size=50`;
+      // Use the correct GreyNoise Community API endpoint
+      const greynoiseUrl = `${GREYNOISE_BASE_URL}/community/context`;
       
-      const response = await fetch(`${CORS_PROXY}${greynoiseUrl}`, {
+      const response = await fetch(greynoiseUrl, {
         headers: {
           'X-API-Key': GREYNOISE_API_KEY,
           'Content-Type': 'application/json'
