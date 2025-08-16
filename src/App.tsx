@@ -24,7 +24,7 @@ function App() {
       setAttacks(initialAttacks);
     } else {
       // Start real-time data collection
-      console.log('🚀 Switching to real OTX threat intelligence data...');
+      console.log('🚀 Switching to real OTX + AbuseIPDB threat intelligence data...');
       realAttackDataService.startRealTimeCollection();
     }
 
@@ -58,7 +58,7 @@ function App() {
   const toggleDataSource = async () => {
     if (dataSource === 'mock') {
       setIsLoadingRealData(true);
-      console.log('🔄 Loading real threat intelligence from OTX + GreyNoise...');
+      console.log('🔄 Loading real threat intelligence from OTX + AbuseIPDB...');
       setDataSource('real');
       // Clear existing mock data
       setAttacks([]);
@@ -67,7 +67,7 @@ function App() {
       setTimeout(() => setIsLoadingRealData(false), 3000);
     } else {
       realAttackDataService.stopRealTimeCollection();
-      console.log('🔄 Switching back to mock data from real sources...');
+      console.log('🔄 Switching back to mock data...');
       setDataSource('mock');
       // Generate initial mock attacks
       const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());

@@ -4,9 +4,9 @@ import { Attack } from '../types/attack';
 const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f0857310b';
 const OTX_BASE_URL = 'https://otx.alienvault.com/api/v1';
 
-// GreyNoise API configuration
-const GREYNOISE_API_KEY = 'd5753663-cfb6-44c8-8fe6-431b266479b8';
-const GREYNOISE_BASE_URL = 'https://api.greynoise.io/v3';
+// AbuseIPDB API configuration
+const ABUSEIPDB_API_KEY = 'test-key'; // Replace with actual key
+const ABUSEIPDB_BASE_URL = 'https://api.abuseipdb.com/api/v2';
 
 // CORS proxy for API calls (since OTX doesn't support CORS)
 const CORS_PROXY = 'https://corsproxy.io/?';
@@ -148,43 +148,20 @@ interface OTXPulse {
   indicators: OTXIndicator[];
 }
 
-interface GreyNoiseResponse {
-  data: GreyNoiseRecord[];
-  complete: boolean;
-  count: number;
-  query: string;
-  scroll: string;
+interface AbuseIPDBResponse {
+  data: AbuseIPDBRecord[];
 }
 
-interface GreyNoiseRecord {
+interface AbuseIPDBRecord {
   ip: string;
-  first_seen: string;
-  last_seen: string;
-  seen: boolean;
-  tags: string[];
-  actor: string;
-  spoofable: boolean;
-  classification: 'malicious' | 'benign' | 'unknown';
-  cve: string[];
-  metadata: {
-    asn: string;
-    city: string;
-    country: string;
-    country_code: string;
-    organization: string;
-    category: string;
-    tor: boolean;
-    rdns: string;
-    os: string;
-  };
-  raw_data: {
-    scan: Array<{
-      port: number;
-      protocol: string;
-    }>;
-    web: any;
-    ja3: any[];
-  };
+  abuseConfidencePercentage: number;
+  countryCode: string;
+  usageType: string;
+  isp: string;
+  domain: string;
+  totalReports: number;
+  numDistinctUsers: number;
+  lastReportedAt: string;
 }
 
 interface OTXIndicator {
@@ -197,7 +174,7 @@ interface OTXIndicator {
   description: string;
 }
 
-// Real-time cyber attack data service using OTX
+// Real-time cyber attack data service using OTX + AbuseIPDB
 export class RealAttackDataService {
   private static instance: RealAttackDataService;
   private attackQueue: Attack[] = [];
@@ -205,131 +182,141 @@ export class RealAttackDataService {
   private lastFetchTime = 0;
   private pulseCache: OTXPulse[] = [];
 
-  // Fetch real-time scanning activity from GreyNoise
-  async fetchGreyNoiseData(): Promise<Attack[]> {
+  // Fetch real-time malicious IP data from AbuseIPDB
+  async fetchAbuseIPDBData(): Promise<Attack[]> {
     try {
-      // Skip GreyNoise if no API key is provided
-      if (!GREYNOISE_API_KEY || GREYNOISE_API_KEY === '') {
-        console.log('⚠️ GreyNoise API key not provided, skipping GreyNoise data');
+      // Skip AbuseIPDB if no API key is provided
+      if (!ABUSEIPDB_API_KEY || ABUSEIPDB_API_KEY === 'test-key') {
+        console.log('⚠️ AbuseIPDB API key not provided, skipping AbuseIPDB data');
         return [];
       }
       
-      console.log('🔍 Fetching real-time scanning data from GreyNoise...');
+      console.log('🔍 Fetching real-time malicious IP data from AbuseIPDB...');
       
-      // Use the correct GreyNoise Community API endpoint
-      const greynoiseUrl = `${CORS_PROXY}${GREYNOISE_BASE_URL}/community/context`;
+      // Fetch recent malicious IPs from AbuseIPDB
+      const abuseipdbUrl = `${CORS_PROXY}${ABUSEIPDB_BASE_URL}/blacklist?confidenceMinimum=75&limit=50`;
       
-      const response = await fetch(greynoiseUrl, {
+      const response = await fetch(abuseipdbUrl, {
         headers: {
-          'X-API-Key': GREYNOISE_API_KEY,
+          'Key': ABUSEIPDB_API_KEY,
           'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
-        throw new Error(`GreyNoise API error: ${response.status}`);
+        throw new Error(`AbuseIPDB API error: ${response.status}`);
       }
 
-      const data: GreyNoiseResponse = await response.json();
-      console.log('📊 GreyNoise Data received:', data);
+      const data: AbuseIPDBResponse = await response.json();
+      console.log('📊 AbuseIPDB Data received:', data);
 
       if (data.data && Array.isArray(data.data)) {
-        return this.convertGreyNoiseDataToAttacks(data.data);
+        return this.convertAbuseIPDBDataToAttacks(data.data);
       } else {
-        console.warn('⚠️ No GreyNoise data available');
+        console.warn('⚠️ No AbuseIPDB data available');
         return [];
       }
     } catch (error) {
-      console.error('❌ Failed to fetch GreyNoise data:', error);
+      console.error('❌ Failed to fetch AbuseIPDB data:', error);
       return [];
     }
   }
 
-  private convertGreyNoiseDataToAttacks(records: GreyNoiseRecord[]): Attack[] {
+  private convertAbuseIPDBDataToAttacks(records: AbuseIPDBRecord[]): Attack[] {
     const attacks: Attack[] = [];
     const currentTime = new Date();
 
     records.forEach(record => {
-      // Skip if no country information
-      if (!record.metadata?.country) return;
+      // Skip if no country information or low confidence
+      if (!record.countryCode || record.abuseConfidencePercentage < 75) return;
 
-      const sourceCountry = record.metadata.country;
+      const sourceCountry = this.getCountryFromCode(record.countryCode);
       const targetCountry = this.getRandomTargetCountry();
 
-      // Determine attack type from GreyNoise tags and metadata
-      const attackType = this.determineAttackTypeFromGreyNoise(record);
+      // Determine attack type from AbuseIPDB usage type and confidence
+      const attackType = this.determineAttackTypeFromAbuseIPDB(record);
       
-      // Determine severity from classification and tags
-      const severity = this.determineSeverityFromGreyNoise(record);
+      // Determine severity from confidence percentage
+      const severity = this.determineSeverityFromAbuseIPDB(record);
 
-      // Get port information from scan data
-      const scanData = record.raw_data?.scan || [];
-      const port = scanData.length > 0 ? scanData[0].port : this.getCommonPort();
-      const protocol = scanData.length > 0 ? scanData[0].protocol.toUpperCase() : this.getRandomProtocol();
+      // Get port and protocol based on usage type
+      const port = this.getPortFromUsageType(record.usageType);
+      const protocol = this.getProtocolFromUsageType(record.usageType);
 
       const attack: Attack = {
-        id: `greynoise-${record.ip.replace(/\./g, '-')}-${Date.now()}`,
-        timestamp: new Date(record.last_seen || currentTime),
+        id: `abuseipdb-${record.ip.replace(/\./g, '-')}-${Date.now()}`,
+        timestamp: new Date(record.lastReportedAt || currentTime),
         sourceCountry,
         targetCountry,
         attackType,
         severity,
-        status: record.classification === 'malicious' ? 'active' : 'blocked',
+        status: record.abuseConfidencePercentage > 90 ? 'active' : 'blocked',
         sourceIP: record.ip,
         targetIP: this.generateRealisticIP(targetCountry),
         port,
         protocol,
-        threatActor: record.actor || (Math.random() < 0.2 ? this.assignThreatActor(sourceCountry, '') : undefined)
+        threatActor: Math.random() < 0.2 ? this.assignThreatActor(sourceCountry, '') : undefined
       };
 
       attacks.push(attack);
     });
 
-    console.log(`✅ Generated ${attacks.length} attacks from GreyNoise data`);
+    console.log(`✅ Generated ${attacks.length} attacks from AbuseIPDB data`);
     return attacks;
   }
 
-  private determineAttackTypeFromGreyNoise(record: GreyNoiseRecord): string {
-    const tags = record.tags || [];
-    const category = record.metadata?.category || '';
+  private determineAttackTypeFromAbuseIPDB(record: AbuseIPDBRecord): string {
+    const usageType = record.usageType?.toLowerCase() || '';
+    const isp = record.isp?.toLowerCase() || '';
     
-    // Map GreyNoise tags to attack types
-    for (const tag of tags) {
-      const lowerTag = tag.toLowerCase();
-      if (lowerTag.includes('scanner')) return 'Port Scanning';
-      if (lowerTag.includes('bruteforce') || lowerTag.includes('brute')) return 'Brute Force Attack';
-      if (lowerTag.includes('botnet')) return 'Botnet Activity';
-      if (lowerTag.includes('malware')) return 'Malware C&C Communication';
-      if (lowerTag.includes('exploit')) return 'Vulnerability Exploitation';
-      if (lowerTag.includes('worm')) return 'Malware C&C Communication';
-      if (lowerTag.includes('trojan')) return 'Command & Control Traffic';
-      if (lowerTag.includes('miner') || lowerTag.includes('mining')) return 'Cryptocurrency Mining';
-    }
-
-    // Map by category
-    if (category.toLowerCase().includes('scanner')) return 'Port Scanning';
-    if (category.toLowerCase().includes('malware')) return 'Malware C&C Communication';
+    // Map AbuseIPDB usage types to attack types
+    if (usageType.includes('hosting')) return 'Command & Control Traffic';
+    if (usageType.includes('datacenter')) return 'Botnet Activity';
+    if (usageType.includes('business')) return 'Data Exfiltration';
+    if (usageType.includes('residential')) return 'Malware C&C Communication';
+    if (isp.includes('tor') || isp.includes('vpn')) return 'Advanced Persistent Threat';
     
-    // Default based on scan activity
-    const scanData = record.raw_data?.scan || [];
-    if (scanData.some(s => [22, 3389].includes(s.port))) return 'Brute Force Attack';
-    if (scanData.some(s => [80, 443, 8080].includes(s.port))) return 'Vulnerability Exploitation';
+    // Default based on confidence level
+    if (record.abuseConfidencePercentage > 95) return 'Advanced Persistent Threat';
+    if (record.abuseConfidencePercentage > 85) return 'Malware C&C Communication';
     
-    return 'Port Scanning'; // Most common GreyNoise activity
+    return 'Botnet Activity'; // Most common AbuseIPDB activity
   }
 
-  private determineSeverityFromGreyNoise(record: GreyNoiseRecord): Attack['severity'] {
-    const tags = record.tags || [];
-    const classification = record.classification;
-    const cveCount = record.cve?.length || 0;
+  private determineSeverityFromAbuseIPDB(record: AbuseIPDBRecord): Attack['severity'] {
+    const confidence = record.abuseConfidencePercentage;
+    const reports = record.totalReports;
     
-    // High severity indicators
-    if (classification === 'malicious') {
-      if (cveCount > 0) return Math.random() < 0.6 ? 'critical' : 'high';
-      if (tags.some(tag => tag.toLowerCase().includes('exploit'))) return 'high';
-      if (tags.some(tag => tag.toLowerCase().includes('botnet'))) return 'high';
-      return Math.random() < 0.3 ? 'high' : 'medium';
-    }
+    // Map confidence percentage to severity
+    if (confidence >= 95 && reports > 50) return 'critical';
+    if (confidence >= 90) return 'high';
+    if (confidence >= 80) return 'medium';
+    return 'low';
+  }
+
+  private getCountryFromCode(countryCode: string): string {
+    const countryMap: { [key: string]: string } = {
+      'US': 'United States', 'CN': 'China', 'RU': 'Russia', 'DE': 'Germany',
+      'GB': 'United Kingdom', 'FR': 'France', 'JP': 'Japan', 'KR': 'South Korea',
+      'IN': 'India', 'BR': 'Brazil', 'CA': 'Canada', 'AU': 'Australia',
+      'NL': 'Netherlands', 'SE': 'Sweden', 'IL': 'Israel', 'IR': 'Iran',
+      'KP': 'North Korea', 'UA': 'Ukraine', 'PL': 'Poland', 'TR': 'Turkey'
+    };
+    return countryMap[countryCode] || 'Unknown';
+  }
+
+  private getPortFromUsageType(usageType: string): number {
+    const type = usageType?.toLowerCase() || '';
+    if (type.includes('hosting')) return Math.random() < 0.5 ? 80 : 443;
+    if (type.includes('datacenter')) return Math.random() < 0.3 ? 22 : 3389;
+    return this.getCommonPort();
+  }
+
+  private getProtocolFromUsageType(usageType: string): string {
+    const type = usageType?.toLowerCase() || '';
+    if (type.includes('hosting')) return Math.random() < 0.5 ? 'HTTP' : 'HTTPS';
+    if (type.includes('datacenter')) return Math.random() < 0.3 ? 'SSH' : 'TCP';
+    return this.getRandomProtocol();
     
     // Default for scanning activity
     const rand = Math.random();
@@ -349,19 +336,19 @@ export class RealAttackDataService {
   // Fetch real threat intelligence from OTX
   async fetchRealTimeAttacks(): Promise<Attack[]> {
     try {
-      console.log('🔍 Fetching real threat data from multiple sources...');
+      console.log('🔍 Fetching real threat data from OTX + AbuseIPDB...');
       
-      // Fetch from both OTX and GreyNoise in parallel
-      const [otxAttacks, greynoiseAttacks] = await Promise.all([
+      // Fetch from both OTX and AbuseIPDB in parallel
+      const [otxAttacks, abuseipdbAttacks] = await Promise.all([
         this.fetchOTXData(),
-        this.fetchGreyNoiseData()
+        this.fetchAbuseIPDBData()
       ]);
       
       // Combine attacks from both sources
-      const combinedAttacks = [...otxAttacks, ...greynoiseAttacks];
+      const combinedAttacks = [...otxAttacks, ...abuseipdbAttacks];
       
       if (combinedAttacks.length > 0) {
-        console.log(`✅ Combined ${otxAttacks.length} OTX + ${greynoiseAttacks.length} GreyNoise attacks`);
+        console.log(`✅ Combined ${otxAttacks.length} OTX + ${abuseipdbAttacks.length} AbuseIPDB attacks`);
         return combinedAttacks;
       } else {
         console.warn('⚠️ No real data available, generating realistic attacks');
@@ -653,7 +640,7 @@ export class RealAttackDataService {
     if (this.isActive) return;
     
     this.isActive = true;
-    console.log('🔴 Starting real-time cyber attack data collection from OTX + GreyNoise...');
+    console.log('🔴 Starting real-time cyber attack data collection from OTX + AbuseIPDB...');
     
     // Initial fetch
     this.fetchRealTimeAttacks().then(attacks => {
@@ -684,7 +671,7 @@ export class RealAttackDataService {
 
   stopRealTimeCollection(): void {
     this.isActive = false;
-    console.log('⏹️ Stopped real-time cyber attack data collection from OTX + GreyNoise');
+    console.log('⏹️ Stopped real-time cyber attack data collection from OTX + AbuseIPDB');
   }
 
   getQueuedAttacks(): Attack[] {
