@@ -111,7 +111,6 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
     
     setCountryStats(stats);
   }, [attacks]);
-  useEffect(() => {
   // Dynamic animation loop
   useEffect(() => {
     if (!worldData || !svgRef.current) return;
@@ -149,6 +148,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
     };
   }, [worldData, attacks]);
 
+  useEffect(() => {
     if (!worldData || !svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
