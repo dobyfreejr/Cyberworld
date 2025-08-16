@@ -217,7 +217,7 @@ export class RealAttackDataService {
       console.log('🔍 Fetching real-time scanning data from GreyNoise...');
       
       // Use the correct GreyNoise Community API endpoint
-      const greynoiseUrl = `${GREYNOISE_BASE_URL}/community/context`;
+      const greynoiseUrl = `${CORS_PROXY}${GREYNOISE_BASE_URL}/community/context`;
       
       const response = await fetch(greynoiseUrl, {
         headers: {
