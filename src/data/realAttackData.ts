@@ -212,7 +212,7 @@ export class RealAttackDataService {
       
       // Query for recent malicious activity
       const query = 'classification:malicious last_seen:1d';
-      const greynoiseUrl = `${GREYNOISE_BASE_URL}/experimental/gnql?query=${encodeURIComponent(query)}&size=50`;
+      const greynoiseUrl = `${GREYNOISE_BASE_URL}/community/gnql?query=${encodeURIComponent(query)}&size=50`;
       
       const response = await fetch(`${CORS_PROXY}${greynoiseUrl}`, {
         headers: {
