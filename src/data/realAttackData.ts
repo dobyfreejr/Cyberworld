@@ -5,7 +5,7 @@ const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f085
 const OTX_BASE_URL = 'https://otx.alienvault.com/api/v1';
 
 // AbuseIPDB API configuration
-const ABUSEIPDB_API_KEY = 'test-key'; // Replace with actual key
+const ABUSEIPDB_API_KEY = 'ce6dd77c9999046b59f96b6343a37e917a352b46b65dc115920809a75148a97fe0f71f093797864b';
 const ABUSEIPDB_BASE_URL = 'https://api.abuseipdb.com/api/v2';
 
 // CORS proxy for API calls (since OTX doesn't support CORS)
