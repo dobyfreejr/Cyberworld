@@ -1,4 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import * as d3 from 'd3';
+import { geoPath, geoNaturalEarth1 } from 'd3-geo';
+import { feature } from 'topojson-client';
 import { Attack } from '../types/attack';
 
 interface WorldMapProps {
@@ -6,13 +10,274 @@ interface WorldMapProps {
 }
 
 const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [worldData, setWorldData] = useState<any>(null);
+  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Load world topology data
+    const loadWorldData = async () => {
+      try {
+        const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+        const world = await response.json();
+        const countries = feature(world, world.objects.countries);
+        setWorldData(countries);
+      } catch (error) {
+        console.error('Failed to load world data:', error);
+      }
+    };
+
+    loadWorldData();
+  }, []);
+
+  useEffect(() => {
+    if (!worldData || !svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const width = 1200;
+    const height = 600;
+
+    svg.selectAll('*').remove();
+
+    const projection = geoNaturalEarth1()
+      .scale(180)
+      .translate([width / 2, height / 2]);
+
+    const path = geoPath().projection(projection);
+
+    // Create gradient definitions
+    const defs = svg.append('defs');
+    
+    const attackGradient = defs.append('radialGradient')
+      .attr('id', 'attackGradient')
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%');
+    
+    attackGradient.append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', '#ff4444')
+      .attr('stop-opacity', 0.8);
+    
+    attackGradient.append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', '#ff4444')
+      .attr('stop-opacity', 0);
+
+    // Draw countries
+    svg.selectAll('.country')
+      .data(worldData.features)
+      .enter()
+      .append('path')
+      .attr('class', 'country')
+      .attr('d', path)
+      .attr('fill', '#1f2937')
+      .attr('stroke', '#374151')
+      .attr('stroke-width', 0.5)
+      .style('cursor', 'pointer')
+      .on('mouseenter', function(event, d) {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr('fill', '#374151');
+        setHoveredCountry(d.properties?.NAME || 'Unknown');
+      })
+      .on('mouseleave', function() {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr('fill', '#1f2937');
+        setHoveredCountry(null);
+      });
+
+    // Draw attack connections
+    const recentAttacks = attacks.slice(0, 50);
+    
+    recentAttacks.forEach((attack, index) => {
+      const sourceCoords = getCountryCoordinates(attack.sourceCountry);
+      const targetCoords = getCountryCoordinates(attack.targetCountry);
+      
+      if (sourceCoords && targetCoords) {
+        const sourcePoint = projection(sourceCoords);
+        const targetPoint = projection(targetCoords);
+        
+        if (sourcePoint && targetPoint) {
+          // Draw attack line
+          svg.append('line')
+            .attr('x1', sourcePoint[0])
+            .attr('y1', sourcePoint[1])
+            .attr('x2', targetPoint[0])
+            .attr('y2', targetPoint[1])
+            .attr('stroke', getSeverityColor(attack.severity))
+            .attr('stroke-width', getSeverityWidth(attack.severity))
+            .attr('opacity', 0)
+            .transition()
+            .delay(index * 50)
+            .duration(1000)
+            .attr('opacity', 0.6)
+            .transition()
+            .delay(2000)
+            .duration(1000)
+            .attr('opacity', 0)
+            .remove();
+
+          // Draw source pulse
+          svg.append('circle')
+            .attr('cx', sourcePoint[0])
+            .attr('cy', sourcePoint[1])
+            .attr('r', 0)
+            .attr('fill', 'url(#attackGradient)')
+            .transition()
+            .delay(index * 50)
+            .duration(1000)
+            .attr('r', 15)
+            .attr('opacity', 0.8)
+            .transition()
+            .duration(1000)
+            .attr('r', 25)
+            .attr('opacity', 0)
+            .remove();
+
+          // Draw target impact
+          svg.append('circle')
+            .attr('cx', targetPoint[0])
+            .attr('cy', targetPoint[1])
+            .attr('r', 0)
+            .attr('fill', getSeverityColor(attack.severity))
+            .transition()
+            .delay(index * 50 + 800)
+            .duration(500)
+            .attr('r', 8)
+            .attr('opacity', 0.9)
+            .transition()
+            .duration(1500)
+            .attr('r', 20)
+            .attr('opacity', 0)
+            .remove();
+        }
+      }
+    });
+
+  }, [worldData, attacks]);
+
+  const getCountryCoordinates = (countryName: string): [number, number] | null => {
+    const coordinates: { [key: string]: [number, number] } = {
+      'United States': [-95.7129, 37.0902],
+      'China': [104.1954, 35.8617],
+      'Russia': [105.3188, 61.5240],
+      'Germany': [10.4515, 51.1657],
+      'United Kingdom': [-3.4360, 55.3781],
+      'France': [2.2137, 46.2276],
+      'Japan': [138.2529, 36.2048],
+      'South Korea': [127.7669, 35.9078],
+      'India': [78.9629, 20.5937],
+      'Brazil': [-51.9253, -14.2350],
+      'Canada': [-106.3468, 56.1304],
+      'Australia': [133.7751, -25.2744],
+      'Netherlands': [5.2913, 52.1326],
+      'Sweden': [18.6435, 60.1282],
+      'Israel': [34.8516, 32.7940],
+      'Iran': [53.6880, 32.4279],
+      'North Korea': [127.5101, 40.3399]
+    };
+    return coordinates[countryName] || null;
+  };
+
+  const getSeverityColor = (severity: string): string => {
+    switch (severity) {
+      case 'critical': return '#dc2626';
+      case 'high': return '#ea580c';
+      case 'medium': return '#d97706';
+      case 'low': return '#65a30d';
+      default: return '#6b7280';
+    }
+  };
+
+  const getSeverityWidth = (severity: string): number => {
+    switch (severity) {
+      case 'critical': return 3;
+      case 'high': return 2.5;
+      case 'medium': return 2;
+      case 'low': return 1.5;
+      default: return 1;
+    }
+  };
+
+  const activeAttacks = attacks.filter(a => a.status === 'active').length;
+  const criticalAttacks = attacks.filter(a => a.severity === 'critical').length;
+
   return (
-    <div className="bg-gray-800 rounded-lg p-6">
-      <h2 className="text-xl font-bold mb-4">World Map</h2>
-      <div className="h-96 bg-gray-700 rounded flex items-center justify-center">
-        <p className="text-gray-400">World Map Component - {attacks.length} attacks tracked</p>
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.5 }}
+      className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-xl p-6 shadow-2xl border border-gray-700"
+    >
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            Global Threat Map
+          </h2>
+          <p className="text-gray-400 text-sm mt-1">Real-time cyber attack visualization</p>
+        </div>
+        
+        <div className="flex items-center space-x-6 text-sm">
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <span className="text-gray-300">{activeAttacks} Active Attacks</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+            <span className="text-gray-300">{criticalAttacks} Critical</span>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <div className="relative bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
+        <svg
+          ref={svgRef}
+          width="100%"
+          height="600"
+          viewBox="0 0 1200 600"
+          className="w-full h-auto"
+        />
+        
+        {hoveredCountry && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="absolute top-4 left-4 bg-gray-800 px-3 py-2 rounded-lg border border-gray-600 shadow-lg"
+          >
+            <p className="text-white font-medium">{hoveredCountry}</p>
+            <p className="text-gray-400 text-xs">
+              {attacks.filter(a => a.sourceCountry === hoveredCountry || a.targetCountry === hoveredCountry).length} attacks
+            </p>
+          </motion.div>
+        )}
+
+        <div className="absolute bottom-4 right-4 bg-gray-800 px-4 py-3 rounded-lg border border-gray-600">
+          <div className="text-xs text-gray-400 mb-2">Attack Severity</div>
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-red-600 rounded-full"></div>
+              <span className="text-xs text-gray-300">Critical</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-orange-600 rounded-full"></div>
+              <span className="text-xs text-gray-300">High</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-yellow-600 rounded-full"></div>
+              <span className="text-xs text-gray-300">Medium</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+              <span className="text-xs text-gray-300">Low</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 };
 
