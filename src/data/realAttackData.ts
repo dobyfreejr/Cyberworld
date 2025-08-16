@@ -9,7 +9,7 @@ const GREYNOISE_API_KEY = 'YOUR_GREYNOISE_API_KEY'; // User needs to provide thi
 const GREYNOISE_BASE_URL = 'https://api.greynoise.io/v3';
 
 // CORS proxy for API calls (since OTX doesn't support CORS)
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const CORS_PROXY = 'https://corsproxy.io/?';
 
 // Real attack types from OTX threat intelligence
 const REAL_ATTACK_TYPES = [
@@ -214,7 +214,7 @@ export class RealAttackDataService {
       const query = 'classification:malicious last_seen:1d';
       const greynoiseUrl = `${GREYNOISE_BASE_URL}/experimental/gnql?query=${encodeURIComponent(query)}&size=50`;
       
-      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(greynoiseUrl)}`, {
+      const response = await fetch(`${CORS_PROXY}${greynoiseUrl}`, {
         headers: {
           'key': GREYNOISE_API_KEY,
           'Content-Type': 'application/json'
@@ -375,7 +375,7 @@ export class RealAttackDataService {
       
       // Fetch recent pulses (threat intelligence reports)
       const pulsesUrl = `${OTX_BASE_URL}/pulses/subscribed?limit=20&page=1`;
-      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(pulsesUrl)}`, {
+      const response = await fetch(`${CORS_PROXY}${pulsesUrl}`, {
         headers: {
           'X-OTX-API-KEY': OTX_API_KEY,
           'Content-Type': 'application/json'
