@@ -228,7 +228,7 @@ export class RealAttackDataService {
 
     records.forEach(record => {
       // Skip if no country information or low confidence
-      if (!record.countryCode || record.abuseConfidencePercentage < 75) return;
+      if (!record.ip || !record.countryCode || record.abuseConfidencePercentage < 75) return;
 
       const sourceCountry = this.getCountryFromCode(record.countryCode);
       const targetCountry = this.getRandomTargetCountry();
