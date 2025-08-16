@@ -4,15 +4,26 @@ import * as d3 from 'd3';
 import { geoPath, geoNaturalEarth1 } from 'd3-geo';
 import { feature } from 'topojson-client';
 import { Attack } from '../types/attack';
+import { AlertTriangle, Shield, Activity, TrendingUp, MapPin } from 'lucide-react';
 
 interface WorldMapProps {
   attacks: Attack[];
 }
 
+interface CountryStats {
+  totalAttacks: number;
+  activeAttacks: number;
+  criticalAttacks: number;
+  blockedAttacks: number;
+  topAttackTypes: { type: string; count: number }[];
+  recentAttacks: Attack[];
+}
 const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [worldData, setWorldData] = useState<any>(null);
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [countryStats, setCountryStats] = useState<Record<string, CountryStats>>({});
 
   useEffect(() => {
     // Load world topology data
@@ -31,6 +42,73 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
   }, []);
 
   useEffect(() => {
+    // Calculate country statistics
+    const stats: Record<string, CountryStats> = {};
+    
+    attacks.forEach(attack => {
+      // Stats for source country
+      if (!stats[attack.sourceCountry]) {
+        stats[attack.sourceCountry] = {
+          totalAttacks: 0,
+          activeAttacks: 0,
+          criticalAttacks: 0,
+          blockedAttacks: 0,
+          topAttackTypes: [],
+          recentAttacks: []
+        };
+      }
+      
+      // Stats for target country
+      if (!stats[attack.targetCountry]) {
+        stats[attack.targetCountry] = {
+          totalAttacks: 0,
+          activeAttacks: 0,
+          criticalAttacks: 0,
+          blockedAttacks: 0,
+          topAttackTypes: [],
+          recentAttacks: []
+        };
+      }
+      
+      // Update source country stats
+      stats[attack.sourceCountry].totalAttacks++;
+      if (attack.status === 'active') stats[attack.sourceCountry].activeAttacks++;
+      if (attack.severity === 'critical') stats[attack.sourceCountry].criticalAttacks++;
+      if (attack.status === 'blocked') stats[attack.sourceCountry].blockedAttacks++;
+      
+      // Update target country stats
+      stats[attack.targetCountry].totalAttacks++;
+      if (attack.status === 'active') stats[attack.targetCountry].activeAttacks++;
+      if (attack.severity === 'critical') stats[attack.targetCountry].criticalAttacks++;
+      if (attack.status === 'blocked') stats[attack.targetCountry].blockedAttacks++;
+    });
+    
+    // Calculate top attack types and recent attacks for each country
+    Object.keys(stats).forEach(country => {
+      const countryAttacks = attacks.filter(a => 
+        a.sourceCountry === country || a.targetCountry === country
+      );
+      
+      // Top attack types
+      const attackTypes: Record<string, number> = {};
+      countryAttacks.forEach(attack => {
+        attackTypes[attack.attackType] = (attackTypes[attack.attackType] || 0) + 1;
+      });
+      
+      stats[country].topAttackTypes = Object.entries(attackTypes)
+        .map(([type, count]) => ({ type, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+      
+      // Recent attacks (last 10)
+      stats[country].recentAttacks = countryAttacks
+        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+        .slice(0, 5);
+    });
+    
+    setCountryStats(stats);
+  }, [attacks]);
+  useEffect(() => {
     if (!worldData || !svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
@@ -44,6 +122,25 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
       .translate([width / 2, height / 2]);
 
     const path = geoPath().projection(projection);
+
+    // Get country attack intensity for coloring
+    const getCountryIntensity = (countryName: string) => {
+      const stats = countryStats[countryName];
+      if (!stats) return 0;
+      return Math.min(stats.totalAttacks / 10, 1); // Normalize to 0-1
+    };
+
+    const getCountryColor = (countryName: string) => {
+      const intensity = getCountryIntensity(countryName);
+      if (intensity === 0) return '#1f2937';
+      
+      // Color gradient from dark gray to red based on attack intensity
+      const red = Math.floor(255 * intensity);
+      const green = Math.floor(50 * (1 - intensity));
+      const blue = Math.floor(50 * (1 - intensity));
+      
+      return `rgb(${red}, ${green}, ${blue})`;
+    };
 
     // Create gradient definitions
     const defs = svg.append('defs');
@@ -71,22 +168,36 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
       .append('path')
       .attr('class', 'country')
       .attr('d', path)
-      .attr('fill', '#1f2937')
+      .attr('fill', (d: any) => getCountryColor(d.properties?.NAME || ''))
       .attr('stroke', '#374151')
-      .attr('stroke-width', 0.5)
+      .attr('stroke-width', (d: any) => {
+        const stats = countryStats[d.properties?.NAME || ''];
+        return stats && stats.totalAttacks > 0 ? 1 : 0.5;
+      })
       .style('cursor', 'pointer')
       .on('mouseenter', function(event, d) {
+        const countryName = d.properties?.NAME || 'Unknown';
         d3.select(this)
           .transition()
           .duration(200)
-          .attr('fill', '#374151');
-        setHoveredCountry(d.properties?.NAME || 'Unknown');
+          .attr('fill', '#60a5fa')
+          .attr('stroke', '#3b82f6')
+          .attr('stroke-width', 2);
+        
+        setHoveredCountry(countryName);
+        setMousePosition({ x: event.pageX, y: event.pageY });
       })
-      .on('mouseleave', function() {
+      .on('mousemove', function(event) {
+        setMousePosition({ x: event.pageX, y: event.pageY });
+      })
+      .on('mouseleave', function(event, d) {
+        const countryName = d.properties?.NAME || '';
         d3.select(this)
           .transition()
           .duration(200)
-          .attr('fill', '#1f2937');
+          .attr('fill', getCountryColor(countryName))
+          .attr('stroke', '#374151')
+          .attr('stroke-width', countryStats[countryName] && countryStats[countryName].totalAttacks > 0 ? 1 : 0.5);
         setHoveredCountry(null);
       });
 
@@ -205,6 +316,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
 
   const activeAttacks = attacks.filter(a => a.status === 'active').length;
   const criticalAttacks = attacks.filter(a => a.severity === 'critical').length;
+  const hoveredStats = hoveredCountry ? countryStats[hoveredCountry] : null;
 
   return (
     <motion.div 
@@ -242,18 +354,6 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
           className="w-full h-auto"
         />
         
-        {hoveredCountry && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="absolute top-4 left-4 bg-gray-800 px-3 py-2 rounded-lg border border-gray-600 shadow-lg"
-          >
-            <p className="text-white font-medium">{hoveredCountry}</p>
-            <p className="text-gray-400 text-xs">
-              {attacks.filter(a => a.sourceCountry === hoveredCountry || a.targetCountry === hoveredCountry).length} attacks
-            </p>
-          </motion.div>
-        )}
 
         <div className="absolute bottom-4 right-4 bg-gray-800 px-4 py-3 rounded-lg border border-gray-600">
           <div className="text-xs text-gray-400 mb-2">Attack Severity</div>
@@ -277,6 +377,101 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
           </div>
         </div>
       </div>
+
+      {/* Enhanced Country Tooltip */}
+      {hoveredCountry && hoveredStats && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            left: mousePosition.x + 15,
+            top: mousePosition.y - 10,
+            transform: mousePosition.x > window.innerWidth - 400 ? 'translateX(-100%)' : 'none'
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-gray-800/95 backdrop-blur-sm border border-gray-600 rounded-lg p-4 shadow-2xl max-w-sm"
+          >
+            <div className="flex items-center space-x-2 mb-3">
+              <MapPin className="w-5 h-5 text-blue-400" />
+              <h3 className="text-white font-bold text-lg">{hoveredCountry}</h3>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-gray-700/50 rounded-lg p-2">
+                <div className="flex items-center space-x-1 mb-1">
+                  <Activity className="w-3 h-3 text-cyan-400" />
+                  <span className="text-xs text-gray-400">Total</span>
+                </div>
+                <div className="text-lg font-bold text-white">{hoveredStats.totalAttacks}</div>
+              </div>
+              
+              <div className="bg-gray-700/50 rounded-lg p-2">
+                <div className="flex items-center space-x-1 mb-1">
+                  <AlertTriangle className="w-3 h-3 text-red-400" />
+                  <span className="text-xs text-gray-400">Active</span>
+                </div>
+                <div className="text-lg font-bold text-red-400">{hoveredStats.activeAttacks}</div>
+              </div>
+              
+              <div className="bg-gray-700/50 rounded-lg p-2">
+                <div className="flex items-center space-x-1 mb-1">
+                  <AlertTriangle className="w-3 h-3 text-orange-400" />
+                  <span className="text-xs text-gray-400">Critical</span>
+                </div>
+                <div className="text-lg font-bold text-orange-400">{hoveredStats.criticalAttacks}</div>
+              </div>
+              
+              <div className="bg-gray-700/50 rounded-lg p-2">
+                <div className="flex items-center space-x-1 mb-1">
+                  <Shield className="w-3 h-3 text-green-400" />
+                  <span className="text-xs text-gray-400">Blocked</span>
+                </div>
+                <div className="text-lg font-bold text-green-400">{hoveredStats.blockedAttacks}</div>
+              </div>
+            </div>
+            
+            {hoveredStats.topAttackTypes.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2 flex items-center">
+                  <TrendingUp className="w-3 h-3 mr-1" />
+                  Top Attack Types
+                </h4>
+                <div className="space-y-1">
+                  {hoveredStats.topAttackTypes.map((attackType, index) => (
+                    <div key={attackType.type} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">{attackType.type}</span>
+                      <span className="text-cyan-400 font-medium">{attackType.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {hoveredStats.recentAttacks.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">Recent Attacks</h4>
+                <div className="space-y-1 max-h-24 overflow-y-auto">
+                  {hoveredStats.recentAttacks.map((attack, index) => (
+                    <div key={attack.id} className="text-xs text-gray-400 flex items-center justify-between">
+                      <span className="truncate">{attack.attackType}</span>
+                      <span className={`px-1 py-0.5 rounded text-xs ${
+                        attack.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
+                        attack.severity === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                        attack.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-green-500/20 text-green-400'
+                      }`}>
+                        {attack.severity}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 };
