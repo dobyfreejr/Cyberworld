@@ -4,7 +4,7 @@ import * as d3 from 'd3';
 import { geoPath, geoNaturalEarth1 } from 'd3-geo';
 import { feature } from 'topojson-client';
 import { Attack } from '../types/attack';
-import { AlertTriangle, Shield, Activity, TrendingUp, MapPin } from 'lucide-react';
+import { AlertTriangle, Shield, Activity, TrendingUp, MapPin, Zap, Target } from 'lucide-react';
 
 interface WorldMapProps {
   attacks: Attack[];
@@ -20,10 +20,13 @@ interface CountryStats {
 }
 const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const animationRef = useRef<number>();
   const [worldData, setWorldData] = useState<any>(null);
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [countryStats, setCountryStats] = useState<Record<string, CountryStats>>({});
+  const [activeAnimations, setActiveAnimations] = useState<any[]>([]);
+  const [pulsingCountries, setPulsingCountries] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Load world topology data
@@ -109,6 +112,43 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
     setCountryStats(stats);
   }, [attacks]);
   useEffect(() => {
+  // Dynamic animation loop
+  useEffect(() => {
+    if (!worldData || !svgRef.current) return;
+
+    const animate = () => {
+      const svg = d3.select(svgRef.current);
+      
+      // Add random attack animations
+      if (Math.random() < 0.3) { // 30% chance each frame
+        const recentAttacks = attacks.slice(0, 10);
+        const randomAttack = recentAttacks[Math.floor(Math.random() * recentAttacks.length)];
+        
+        if (randomAttack) {
+          animateAttack(svg, randomAttack);
+        }
+      }
+
+      // Update pulsing countries
+      const activeCountries = new Set<string>();
+      attacks.filter(a => a.status === 'active').forEach(attack => {
+        activeCountries.add(attack.sourceCountry);
+        activeCountries.add(attack.targetCountry);
+      });
+      setPulsingCountries(activeCountries);
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [worldData, attacks]);
+
     if (!worldData || !svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
@@ -134,10 +174,13 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
       const intensity = getCountryIntensity(countryName);
       if (intensity === 0) return '#1f2937';
       
-      // Color gradient from dark gray to red based on attack intensity
-      const red = Math.floor(255 * intensity);
-      const green = Math.floor(50 * (1 - intensity));
-      const blue = Math.floor(50 * (1 - intensity));
+      // Dynamic color based on attack intensity and activity
+      const isPulsing = pulsingCountries.has(countryName);
+      const baseIntensity = isPulsing ? Math.min(intensity * 1.5, 1) : intensity;
+      
+      const red = Math.floor(255 * baseIntensity);
+      const green = Math.floor(50 * (1 - baseIntensity));
+      const blue = Math.floor(50 * (1 - baseIntensity));
       
       return `rgb(${red}, ${green}, ${blue})`;
     };
@@ -161,18 +204,42 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
       .attr('stop-color', '#ff4444')
       .attr('stop-opacity', 0);
 
+    // Create pulsing gradient for active countries
+    const pulseGradient = defs.append('radialGradient')
+      .attr('id', 'pulseGradient')
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%');
+    
+    pulseGradient.append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', '#00ffff')
+      .attr('stop-opacity', 0.6);
+    
+    pulseGradient.append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', '#0080ff')
+      .attr('stop-opacity', 0);
+
     // Draw countries
-    svg.selectAll('.country')
+    const countries = svg.selectAll('.country')
       .data(worldData.features)
       .enter()
       .append('path')
       .attr('class', 'country')
       .attr('d', path)
-      .attr('fill', (d: any) => getCountryColor(d.properties?.NAME || ''))
+      .attr('fill', (d: any) => {
+        const countryName = d.properties?.NAME || '';
+        return getCountryColor(countryName);
+      })
       .attr('stroke', '#374151')
       .attr('stroke-width', (d: any) => {
         const stats = countryStats[d.properties?.NAME || ''];
         return stats && stats.totalAttacks > 0 ? 1 : 0.5;
+      })
+      .attr('filter', (d: any) => {
+        const countryName = d.properties?.NAME || '';
+        return pulsingCountries.has(countryName) ? 'url(#glow)' : 'none';
       })
       .style('cursor', 'pointer')
       .on('mouseenter', function(event, d) {
@@ -180,9 +247,10 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
         d3.select(this)
           .transition()
           .duration(200)
-          .attr('fill', '#60a5fa')
+          .attr('fill', '#00d4ff')
           .attr('stroke', '#3b82f6')
-          .attr('stroke-width', 2);
+          .attr('stroke-width', 3)
+          .attr('filter', 'url(#glow)');
         
         setHoveredCountry(countryName);
         setMousePosition({ x: event.pageX, y: event.pageY });
@@ -197,79 +265,145 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
           .duration(200)
           .attr('fill', getCountryColor(countryName))
           .attr('stroke', '#374151')
-          .attr('stroke-width', countryStats[countryName] && countryStats[countryName].totalAttacks > 0 ? 1 : 0.5);
+          .attr('stroke-width', countryStats[countryName] && countryStats[countryName].totalAttacks > 0 ? 1 : 0.5)
+          .attr('filter', pulsingCountries.has(countryName) ? 'url(#glow)' : 'none');
         setHoveredCountry(null);
       });
 
-    // Draw attack connections
-    const recentAttacks = attacks.slice(0, 50);
+    // Add glow filter for active countries
+    const filter = defs.append('filter')
+      .attr('id', 'glow')
+      .attr('x', '-50%')
+      .attr('y', '-50%')
+      .attr('width', '200%')
+      .attr('height', '200%');
     
-    recentAttacks.forEach((attack, index) => {
-      const sourceCoords = getCountryCoordinates(attack.sourceCountry);
-      const targetCoords = getCountryCoordinates(attack.targetCountry);
-      
-      if (sourceCoords && targetCoords) {
-        const sourcePoint = projection(sourceCoords);
-        const targetPoint = projection(targetCoords);
-        
-        if (sourcePoint && targetPoint) {
-          // Draw attack line
-          svg.append('line')
-            .attr('x1', sourcePoint[0])
-            .attr('y1', sourcePoint[1])
-            .attr('x2', targetPoint[0])
-            .attr('y2', targetPoint[1])
-            .attr('stroke', getSeverityColor(attack.severity))
-            .attr('stroke-width', getSeverityWidth(attack.severity))
-            .attr('opacity', 0)
-            .transition()
-            .delay(index * 50)
-            .duration(1000)
-            .attr('opacity', 0.6)
-            .transition()
-            .delay(2000)
-            .duration(1000)
-            .attr('opacity', 0)
-            .remove();
+    filter.append('feGaussianBlur')
+      .attr('stdDeviation', '3')
+      .attr('result', 'coloredBlur');
+    
+    const feMerge = filter.append('feMerge');
+    feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+    feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
 
-          // Draw source pulse
-          svg.append('circle')
-            .attr('cx', sourcePoint[0])
-            .attr('cy', sourcePoint[1])
-            .attr('r', 0)
-            .attr('fill', 'url(#attackGradient)')
-            .transition()
-            .delay(index * 50)
-            .duration(1000)
-            .attr('r', 15)
-            .attr('opacity', 0.8)
-            .transition()
-            .duration(1000)
-            .attr('r', 25)
-            .attr('opacity', 0)
-            .remove();
-
-          // Draw target impact
-          svg.append('circle')
-            .attr('cx', targetPoint[0])
-            .attr('cy', targetPoint[1])
-            .attr('r', 0)
-            .attr('fill', getSeverityColor(attack.severity))
-            .transition()
-            .delay(index * 50 + 800)
-            .duration(500)
-            .attr('r', 8)
-            .attr('opacity', 0.9)
-            .transition()
-            .duration(1500)
-            .attr('r', 20)
-            .attr('opacity', 0)
-            .remove();
-        }
+    // Add continuous country pulsing for active attacks
+    countries.each(function(d: any) {
+      const countryName = d.properties?.NAME || '';
+      if (pulsingCountries.has(countryName)) {
+        d3.select(this)
+          .transition()
+          .duration(2000)
+          .ease(d3.easeSinInOut)
+          .attr('opacity', 0.7)
+          .transition()
+          .duration(2000)
+          .ease(d3.easeSinInOut)
+          .attr('opacity', 1)
+          .on('end', function repeat() {
+            if (pulsingCountries.has(countryName)) {
+              d3.select(this)
+                .transition()
+                .duration(2000)
+                .ease(d3.easeSinInOut)
+                .attr('opacity', 0.7)
+                .transition()
+                .duration(2000)
+                .ease(d3.easeSinInOut)
+                .attr('opacity', 1)
+                .on('end', repeat);
+            }
+          });
       }
     });
 
   }, [worldData, attacks]);
+
+  const animateAttack = (svg: any, attack: Attack) => {
+    const sourceCoords = getCountryCoordinates(attack.sourceCountry);
+    const targetCoords = getCountryCoordinates(attack.targetCountry);
+    
+    if (!sourceCoords || !targetCoords) return;
+    
+    const projection = geoNaturalEarth1()
+      .scale(180)
+      .translate([600, 300]);
+    
+    const sourcePoint = projection(sourceCoords);
+    const targetPoint = projection(targetCoords);
+    
+    if (!sourcePoint || !targetPoint) return;
+
+    // Create animated attack path
+    const path = svg.append('path')
+      .attr('d', `M${sourcePoint[0]},${sourcePoint[1]} Q${(sourcePoint[0] + targetPoint[0]) / 2},${(sourcePoint[1] + targetPoint[1]) / 2 - 50} ${targetPoint[0]},${targetPoint[1]}`)
+      .attr('stroke', getSeverityColor(attack.severity))
+      .attr('stroke-width', getSeverityWidth(attack.severity))
+      .attr('fill', 'none')
+      .attr('opacity', 0)
+      .attr('stroke-dasharray', '5,5');
+
+    // Animate the path
+    const totalLength = path.node().getTotalLength();
+    path
+      .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+      .attr('stroke-dashoffset', totalLength)
+      .transition()
+      .duration(1500)
+      .ease(d3.easeLinear)
+      .attr('stroke-dashoffset', 0)
+      .attr('opacity', 0.8)
+      .transition()
+      .duration(1000)
+      .attr('opacity', 0)
+      .remove();
+
+    // Source explosion effect
+    svg.append('circle')
+      .attr('cx', sourcePoint[0])
+      .attr('cy', sourcePoint[1])
+      .attr('r', 0)
+      .attr('fill', getSeverityColor(attack.severity))
+      .attr('opacity', 0.8)
+      .transition()
+      .duration(800)
+      .attr('r', 20)
+      .attr('opacity', 0)
+      .remove();
+
+    // Target impact effect
+    setTimeout(() => {
+      svg.append('circle')
+        .attr('cx', targetPoint[0])
+        .attr('cy', targetPoint[1])
+        .attr('r', 0)
+        .attr('fill', getSeverityColor(attack.severity))
+        .attr('opacity', 0.9)
+        .transition()
+        .duration(600)
+        .attr('r', 15)
+        .attr('opacity', 0)
+        .remove();
+
+      // Add impact rings
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+          svg.append('circle')
+            .attr('cx', targetPoint[0])
+            .attr('cy', targetPoint[1])
+            .attr('r', 5)
+            .attr('stroke', getSeverityColor(attack.severity))
+            .attr('stroke-width', 2)
+            .attr('fill', 'none')
+            .attr('opacity', 0.6)
+            .transition()
+            .duration(1000)
+            .attr('r', 30 + i * 10)
+            .attr('opacity', 0)
+            .remove();
+        }, i * 200);
+      }
+    }, 1200);
+  };
 
   const getCountryCoordinates = (countryName: string): [number, number] | null => {
     const coordinates: { [key: string]: [number, number] } = {
@@ -342,6 +476,10 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
             <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
             <span className="text-gray-300">{criticalAttacks} Critical</span>
           </div>
+          <div className="flex items-center space-x-2">
+            <Zap className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <span className="text-gray-300">Live Tracking</span>
+          </div>
         </div>
       </div>
 
@@ -373,6 +511,14 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-green-600 rounded-full"></div>
               <span className="text-xs text-gray-300">Low</span>
+            </div>
+          </div>
+          
+          <div className="mt-4 pt-2 border-t border-gray-600">
+            <div className="text-xs text-gray-400 mb-1">Live Activity</div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+              <span className="text-xs text-gray-300">Real-time Attacks</span>
             </div>
           </div>
         </div>
@@ -412,7 +558,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
                   <AlertTriangle className="w-3 h-3 text-red-400" />
                   <span className="text-xs text-gray-400">Active</span>
                 </div>
-                <div className="text-lg font-bold text-red-400">{hoveredStats.activeAttacks}</div>
+                <div className="text-lg font-bold text-red-400 animate-pulse">{hoveredStats.activeAttacks}</div>
               </div>
               
               <div className="bg-gray-700/50 rounded-lg p-2">
@@ -420,7 +566,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
                   <AlertTriangle className="w-3 h-3 text-orange-400" />
                   <span className="text-xs text-gray-400">Critical</span>
                 </div>
-                <div className="text-lg font-bold text-orange-400">{hoveredStats.criticalAttacks}</div>
+                <div className="text-lg font-bold text-orange-400 animate-pulse">{hoveredStats.criticalAttacks}</div>
               </div>
               
               <div className="bg-gray-700/50 rounded-lg p-2">
@@ -431,6 +577,16 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
                 <div className="text-lg font-bold text-green-400">{hoveredStats.blockedAttacks}</div>
               </div>
             </div>
+            
+            {hoveredStats.activeAttacks > 0 && (
+              <div className="mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Target className="w-4 h-4 text-red-400 animate-pulse" />
+                  <span className="text-sm font-semibold text-red-400">Under Active Attack!</span>
+                </div>
+                <p className="text-xs text-red-300 mt-1">This country is currently experiencing live cyber attacks</p>
+              </div>
+            )}
             
             {hoveredStats.topAttackTypes.length > 0 && (
               <div className="mb-4">
