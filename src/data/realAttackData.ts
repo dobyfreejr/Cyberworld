@@ -21,6 +21,14 @@ const REAL_ATTACK_TYPES = [
   'Cross-Site Scripting (XSS)',
   'Brute Force Attack',
   'Port Scanning',
+  'Network Ping Sweep',
+  'ICMP Ping Attack',
+  'TCP Port Scan',
+  'UDP Port Scan',
+  'SYN Flood Scan',
+  'Stealth Port Scan',
+  'Network Discovery',
+  'Host Enumeration',
   'Vulnerability Exploitation',
   'DNS Hijacking',
   'Command & Control Traffic',
@@ -514,7 +522,17 @@ export class RealAttackDataService {
   private generateRealisticAttack(timestamp: Date): Attack {
     const sourceCountry = this.getRandomHighRiskCountry();
     const targetCountry = this.getRandomTargetCountry();
-    const attackType = REAL_ATTACK_TYPES[Math.floor(Math.random() * REAL_ATTACK_TYPES.length)];
+    
+    // Increase probability of ping/scanning attacks (30% chance)
+    const pingAttackTypes = [
+      'Network Ping Sweep', 'ICMP Ping Attack', 'TCP Port Scan', 
+      'UDP Port Scan', 'SYN Flood Scan', 'Stealth Port Scan',
+      'Network Discovery', 'Host Enumeration', 'Port Scanning'
+    ];
+    
+    const attackType = Math.random() < 0.3 
+      ? pingAttackTypes[Math.floor(Math.random() * pingAttackTypes.length)]
+      : REAL_ATTACK_TYPES[Math.floor(Math.random() * REAL_ATTACK_TYPES.length)];
     
     // Realistic severity distribution
     const severityRand = Math.random();
