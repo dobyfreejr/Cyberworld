@@ -30,7 +30,7 @@ const ThreatFamilyTracker: React.FC<ThreatFamilyTrackerProps> = ({ className }) 
 
   const loadThreatFamilies = async () => {
     try {
-      const families = threatDatabase.getTopThreatFamilies(timeRange);
+      const families = await threatDatabase.getTopThreatFamilies(timeRange);
       setThreatFamilies(families);
       
       if (families.length > 0 && !selectedFamily) {
@@ -43,7 +43,7 @@ const ThreatFamilyTracker: React.FC<ThreatFamilyTrackerProps> = ({ className }) 
 
   const loadFamilyEvolution = async (familyName: string) => {
     try {
-      const evolution = threatDatabase.getThreatFamilyEvolution(familyName, timeRange);
+      const evolution = await threatDatabase.getThreatFamilyEvolution(familyName, timeRange);
       setFamilyEvolution(evolution);
     } catch (error) {
       console.error('Failed to load family evolution:', error);
@@ -52,7 +52,7 @@ const ThreatFamilyTracker: React.FC<ThreatFamilyTrackerProps> = ({ className }) 
 
   const loadHistoricalStats = async () => {
     try {
-      const stats = threatDatabase.getHistoricalStats(timeRange);
+      const stats = await threatDatabase.getHistoricalStats(timeRange);
       setHistoricalStats(stats);
     } catch (error) {
       console.error('Failed to load historical stats:', error);
@@ -61,7 +61,7 @@ const ThreatFamilyTracker: React.FC<ThreatFamilyTrackerProps> = ({ className }) 
 
   const loadDatabaseStats = async () => {
     try {
-      const stats = threatDatabase.getStats();
+      const stats = await threatDatabase.getStats();
       setDbStats(stats);
     } catch (error) {
       console.error('Failed to load database stats:', error);

@@ -178,8 +178,63 @@ export class ThreatDatabase {
     }
   }
 
+  // Get historical statistics
+  getHistoricalStats(days: number = 30): HistoricalStats[] {
+    try {
+      const db = this.ensureDatabase();
+      const transaction = db.transaction(['attacks'], 'readonly');
+      const store = transaction.objectStore('attacks');
+      const index = store.index('timestamp');
+
+      const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+      const range = IDBKeyRange.lowerBound(cutoffTime);
+
+      const attacks: any[] = [];
+      
+      return new Promise<HistoricalStats[]>((resolve, reject) => {
+        const request = index.openCursor(range);
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            attacks.push(cursor.value);
+            cursor.continue();
+          } else {
+            // Group by date and threat family
+            const grouped: { [key: string]: HistoricalStats } = {};
+            
+            attacks.forEach(attack => {
+              const date = new Date(attack.timestamp).toISOString().split('T')[0];
+              const key = `${date}-${attack.threatFamily || 'unknown'}`;
+              
+              if (!grouped[key]) {
+                grouped[key] = {
+                  date,
+                  threatFamily: attack.threatFamily || 'unknown',
+                  attackCount: 0,
+                  countries: [],
+                  severity: attack.severity
+                };
+              }
+              
+              grouped[key].attackCount++;
+              if (!grouped[key].countries.includes(attack.sourceCountry)) {
+                grouped[key].countries.push(attack.sourceCountry);
+              }
+            });
+
+            resolve(Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)));
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to get historical stats:', error);
+      return Promise.resolve([]);
+    }
+  }
+
   // Get threat family evolution over time
-  async getThreatFamilyEvolution(familyName: string, days: number = 30): Promise<ThreatEvolution[]> {
+  getThreatFamilyEvolution(familyName: string, days: number = 30): Promise<ThreatEvolution[]> {
     try {
       const db = await this.ensureDatabase();
       const transaction = db.transaction(['attacks'], 'readonly');
@@ -243,7 +298,7 @@ export class ThreatDatabase {
   }
 
   // Get top threat families by time period
-  async getTopThreatFamilies(days: number = 7): Promise<ThreatFamily[]> {
+  getTopThreatFamilies(days: number = 7): Promise<ThreatFamily[]> {
     try {
       const db = await this.ensureDatabase();
       const transaction = db.transaction(['threatFamilies', 'attacks'], 'readonly');
