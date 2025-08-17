@@ -2,14 +2,11 @@ import { Attack } from '../types/attack';
 
 // AlienVault OTX API configuration
 const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f0857310b';
-const OTX_BASE_URL = 'https://otx.alienvault.com/api/v1';
+const OTX_BASE_URL = '/api-otx/api/v1';
 
 // AbuseIPDB API configuration
 const ABUSEIPDB_API_KEY = 'ce6dd77c9999046b59f96b6343a37e917a352b46b65dc115920809a75148a97fe0f71f093797864b';
-const ABUSEIPDB_BASE_URL = 'https://api.abuseipdb.com/api/v2';
-
-// CORS proxy for API calls (since OTX doesn't support CORS)
-const CORS_PROXY = 'https://corsproxy.io/?';
+const ABUSEIPDB_BASE_URL = '/api-abuseipdb/api/v2';
 
 // Real attack types from OTX threat intelligence
 const REAL_ATTACK_TYPES = [
@@ -194,7 +191,7 @@ export class RealAttackDataService {
       console.log('🔍 Fetching real-time malicious IP data from AbuseIPDB...');
       
       // Fetch recent malicious IPs from AbuseIPDB
-      const abuseipdbUrl = `${CORS_PROXY}${ABUSEIPDB_BASE_URL}/blacklist?confidenceMinimum=75&limit=50`;
+      const abuseipdbUrl = `${ABUSEIPDB_BASE_URL}/blacklist?confidenceMinimum=75&limit=50`;
       
       const response = await fetch(abuseipdbUrl, {
         headers: {
@@ -367,7 +364,7 @@ export class RealAttackDataService {
       
       // Fetch recent pulses (threat intelligence reports)
       const pulsesUrl = `${OTX_BASE_URL}/pulses/subscribed?limit=20&page=1`;
-      const response = await fetch(`${CORS_PROXY}${pulsesUrl}`, {
+      const response = await fetch(pulsesUrl, {
         headers: {
           'X-OTX-API-KEY': OTX_API_KEY,
           'Content-Type': 'application/json'
