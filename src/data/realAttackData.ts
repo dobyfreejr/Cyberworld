@@ -5,7 +5,7 @@ const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f085
 const OTX_BASE_URL = '/api-otx/api/v1';
 
 // AbuseIPDB API configuration
-const ABUSEIPDB_API_KEY = 'ce6dd77c9999046b59f96b6343a37e917a352b46b65dc115920809a75148a97fe0f71f093797864b';
+const ABUSEIPDB_API_KEY = '';
 const ABUSEIPDB_BASE_URL = '/api-abuseipdb/api/v2';
 
 // Real attack types from OTX threat intelligence
