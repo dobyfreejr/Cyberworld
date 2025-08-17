@@ -179,7 +179,7 @@ export class ThreatDatabase {
   }
 
   // Get historical statistics
-  getHistoricalStats(days: number = 30): HistoricalStats[] {
+  async getHistoricalStats(days: number = 30): Promise<HistoricalStats[]> {
     try {
       const db = this.ensureDatabase();
       const transaction = db.transaction(['attacks'], 'readonly');
@@ -234,7 +234,7 @@ export class ThreatDatabase {
   }
 
   // Get threat family evolution over time
-  getThreatFamilyEvolution(familyName: string, days: number = 30): Promise<ThreatEvolution[]> {
+  async getThreatFamilyEvolution(familyName: string, days: number = 30): Promise<ThreatEvolution[]> {
     try {
       const db = await this.ensureDatabase();
       const transaction = db.transaction(['attacks'], 'readonly');
@@ -298,7 +298,7 @@ export class ThreatDatabase {
   }
 
   // Get top threat families by time period
-  getTopThreatFamilies(days: number = 7): Promise<ThreatFamily[]> {
+  async getTopThreatFamilies(days: number = 7): Promise<ThreatFamily[]> {
     try {
       const db = await this.ensureDatabase();
       const transaction = db.transaction(['threatFamilies', 'attacks'], 'readonly');
