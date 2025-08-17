@@ -6,16 +6,13 @@ import AttackFeed from './components/AttackFeed';
 import ThreatActors from './components/ThreatActors';
 import AttackStats from './components/AttackStats';
 import { Attack, ThreatActor } from './types/attack';
-import { generateMockAttack, mockThreatActors } from './data/mockData';
 import { realAttackDataService } from './data/realAttackData';
 
 function App() {
   const [attacks, setAttacks] = useState<Attack[]>([]);
-  const [threatActors, setThreatActors] = useState<ThreatActor[]>(mockThreatActors);
+  const [threatActors, setThreatActors] = useState<ThreatActor[]>([]);
   const [activeView, setActiveView] = useState<'map' | 'feed' | 'actors' | 'stats'>('map');
   const [isLive, setIsLive] = useState(true);
-  const [dataSource, setDataSource] = useState<'mock' | 'real'>('mock');
-  const [isLoadingRealData, setIsLoadingRealData] = useState(false);
   const [globalStats, setGlobalStats] = useState({
     totalAttacks: 0,
     activeAttacks: 0,
@@ -33,42 +30,29 @@ function App() {
   });
 
   useEffect(() => {
-    if (dataSource === 'mock') {
-      // Generate initial mock attacks
-      const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
-      setAttacks(initialAttacks);
-    } else {
-      // Start real-time data collection
-      console.log('🚀 Switching to real OTX + AbuseIPDB threat intelligence data...');
-      realAttackDataService.startRealTimeCollection();
-    }
+    // Start real-time data collection
+    console.log('🚀 Starting real OTX + AbuseIPDB threat intelligence data...');
+    realAttackDataService.startRealTimeCollection();
 
     return () => {
-      if (dataSource === 'real') {
-        realAttackDataService.stopRealTimeCollection();
-      }
+      realAttackDataService.stopRealTimeCollection();
     };
-  }, [dataSource]);
+  }, []);
 
   useEffect(() => {
     // Set up live attack generation/collection
     const interval = setInterval(() => {
       if (isLive) {
-        if (dataSource === 'mock') {
-          const newAttack = generateMockAttack();
-          setAttacks(prev => [newAttack, ...prev.slice(0, 99)]); // Keep last 100 attacks
-        } else {
-          // Get real-time attacks from queue
-          const newAttacks = realAttackDataService.getQueuedAttacks();
-          if (newAttacks.length > 0) {
-            setAttacks(prev => [...newAttacks, ...prev.slice(0, 100 - newAttacks.length)]);
-          }
+        // Get real-time attacks from queue
+        const newAttacks = realAttackDataService.getQueuedAttacks();
+        if (newAttacks.length > 0) {
+          setAttacks(prev => [...newAttacks, ...prev.slice(0, 100 - newAttacks.length)]);
         }
       }
-    }, dataSource === 'mock' ? 2000 : 1000); // Real data updates faster
+    }, 1000); // Real data updates every second
 
     return () => clearInterval(interval);
-  }, [isLive, dataSource]);
+  }, [isLive]);
 
   // Calculate comprehensive global statistics
   useEffect(() => {
@@ -158,26 +142,6 @@ function App() {
     setGlobalStats(stats);
   }, [attacks]);
 
-  const toggleDataSource = async () => {
-    if (dataSource === 'mock') {
-      setIsLoadingRealData(true);
-      console.log('🔄 Loading real threat intelligence from OTX + AbuseIPDB...');
-      setDataSource('real');
-      // Clear existing mock data
-      setAttacks([]);
-      // Start real data collection
-      realAttackDataService.startRealTimeCollection();
-      setTimeout(() => setIsLoadingRealData(false), 3000);
-    } else {
-      realAttackDataService.stopRealTimeCollection();
-      console.log('🔄 Switching back to mock data...');
-      setDataSource('mock');
-      // Generate initial mock attacks
-      const initialAttacks = Array.from({ length: 50 }, () => generateMockAttack());
-      setAttacks(initialAttacks);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -194,21 +158,11 @@ function App() {
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2 text-sm">
               <div className="flex items-center space-x-2">
-                <button
-                  onClick={toggleDataSource}
-                  disabled={isLoadingRealData}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                    dataSource === 'real'
-                      ? 'bg-red-600 text-white shadow-lg animate-pulse'
-                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                  } ${isLoadingRealData ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isLoadingRealData ? 'Loading OTX...' : dataSource === 'real' ? '🔴 LIVE OTX DATA' : 'MOCK DATA'}
-                </button>
+                <div className="px-3 py-1 rounded-lg text-xs font-medium bg-red-600 text-white shadow-lg animate-pulse">
+                  🔴 LIVE OTX DATA
+                </div>
                 <div className="flex items-center space-x-1">
-                  <div className={`w-2 h-2 rounded-full animate-pulse ${
-                    dataSource === 'real' ? 'bg-red-400' : 'bg-green-400'
-                  }`}></div>
+                  <div className="w-2 h-2 rounded-full animate-pulse bg-red-400"></div>
                   <span>{isLive ? 'Live' : 'Paused'}</span>
                 </div>
               </div>
