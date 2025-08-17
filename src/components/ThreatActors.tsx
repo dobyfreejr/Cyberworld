@@ -5,9 +5,13 @@ import { ThreatActor } from '../types/attack';
 
 interface ThreatActorsProps {
   threatActors: ThreatActor[];
+  globalStats: {
+    topThreatActors: { name: string; attacks: number; country: string; riskLevel: string }[];
+    topSourceCountries: { country: string; attacks: number }[];
+  };
 }
 
-const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
+const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors, globalStats }) => {
   const [sortBy, setSortBy] = useState<'activeAttacks' | 'totalAttacks' | 'riskLevel'>('activeAttacks');
   const [filterType, setFilterType] = useState<'all' | 'nation-state' | 'cybercriminal' | 'hacktivist' | 'insider'>('all');
 
@@ -72,9 +76,9 @@ const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            Threat Actors
+            Threat Intelligence
           </h2>
-          <p className="text-gray-400 text-sm mt-1">Known cybersecurity threat groups</p>
+          <p className="text-gray-400 text-sm mt-1">Active threat actors and attack patterns</p>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -101,6 +105,35 @@ const ThreatActors: React.FC<ThreatActorsProps> = ({ threatActors }) => {
           </select>
         </div>
       </div>
+
+      {/* Global Threat Actor Stats */}
+      {globalStats.topThreatActors.length > 0 && (
+        <div className="mb-6 bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
+          <h3 className="text-lg font-bold text-white mb-3 flex items-center">
+            <Users className="w-5 h-5 mr-2 text-red-400" />
+            Most Active Threat Actors
+          </h3>
+          <div className="grid grid-cols-1 gap-2">
+            {globalStats.topThreatActors.slice(0, 5).map((actor, index) => (
+              <div key={actor.name} className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-bold text-gray-400 w-4">#{index + 1}</span>
+                  <div>
+                    <div className="font-semibold text-white">{actor.name}</div>
+                    <div className="text-xs text-gray-400">{actor.country}</div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getRiskColor(actor.riskLevel)}`}>
+                    {actor.riskLevel.toUpperCase()}
+                  </span>
+                  <span className="text-red-400 font-bold">{actor.attacks}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 h-[calc(100%-120px)] overflow-y-auto custom-scrollbar">
         {sortedActors.map((actor, index) => (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Globe, Shield, AlertTriangle, Activity, Users, Target, Play, Pause } from 'lucide-react';
+import { Globe, Shield, AlertTriangle, Activity, Users, Target, Play, Pause, Eye, Zap } from 'lucide-react';
 import WorldMap from './components/WorldMap';
 import AttackFeed from './components/AttackFeed';
 import ThreatActors from './components/ThreatActors';
@@ -16,6 +16,21 @@ function App() {
   const [isLive, setIsLive] = useState(true);
   const [dataSource, setDataSource] = useState<'mock' | 'real'>('mock');
   const [isLoadingRealData, setIsLoadingRealData] = useState(false);
+  const [globalStats, setGlobalStats] = useState({
+    totalAttacks: 0,
+    activeAttacks: 0,
+    blockedAttacks: 0,
+    resolvedAttacks: 0,
+    criticalAttacks: 0,
+    highAttacks: 0,
+    mediumAttacks: 0,
+    lowAttacks: 0,
+    uniqueCountries: 0,
+    topThreatActors: [] as { name: string; attacks: number; country: string; riskLevel: string }[],
+    topSourceCountries: [] as { country: string; attacks: number }[],
+    topTargetCountries: [] as { country: string; attacks: number }[],
+    topAttackTypes: [] as { type: string; count: number }[]
+  });
 
   useEffect(() => {
     if (dataSource === 'mock') {
@@ -55,6 +70,94 @@ function App() {
     return () => clearInterval(interval);
   }, [isLive, dataSource]);
 
+  // Calculate comprehensive global statistics
+  useEffect(() => {
+    const stats = {
+      totalAttacks: attacks.length,
+      activeAttacks: attacks.filter(a => a.status === 'active').length,
+      blockedAttacks: attacks.filter(a => a.status === 'blocked').length,
+      resolvedAttacks: attacks.filter(a => a.status === 'resolved').length,
+      criticalAttacks: attacks.filter(a => a.severity === 'critical').length,
+      highAttacks: attacks.filter(a => a.severity === 'high').length,
+      mediumAttacks: attacks.filter(a => a.severity === 'medium').length,
+      lowAttacks: attacks.filter(a => a.severity === 'low').length,
+      uniqueCountries: 0,
+      topThreatActors: [] as { name: string; attacks: number; country: string; riskLevel: string }[],
+      topSourceCountries: [] as { country: string; attacks: number }[],
+      topTargetCountries: [] as { country: string; attacks: number }[],
+      topAttackTypes: [] as { type: string; count: number }[]
+    };
+
+    // Calculate unique countries
+    const countries = new Set([
+      ...attacks.map(a => a.sourceCountry),
+      ...attacks.map(a => a.targetCountry)
+    ]);
+    stats.uniqueCountries = countries.size;
+
+    // Calculate top threat actors
+    const threatActorStats: Record<string, { attacks: number; country: string; riskLevel: string }> = {};
+    attacks.forEach(attack => {
+      if (attack.threatActor) {
+        if (!threatActorStats[attack.threatActor]) {
+          threatActorStats[attack.threatActor] = {
+            attacks: 0,
+            country: attack.sourceCountry,
+            riskLevel: attack.severity === 'critical' ? 'critical' : 
+                      attack.severity === 'high' ? 'high' : 
+                      attack.severity === 'medium' ? 'medium' : 'low'
+          };
+        }
+        threatActorStats[attack.threatActor].attacks++;
+        // Update risk level to highest seen
+        const currentRisk = threatActorStats[attack.threatActor].riskLevel;
+        const newRisk = attack.severity;
+        if ((newRisk === 'critical') || 
+            (newRisk === 'high' && currentRisk !== 'critical') ||
+            (newRisk === 'medium' && !['critical', 'high'].includes(currentRisk))) {
+          threatActorStats[attack.threatActor].riskLevel = newRisk;
+        }
+      }
+    });
+
+    stats.topThreatActors = Object.entries(threatActorStats)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.attacks - a.attacks)
+      .slice(0, 10);
+
+    // Calculate top source countries
+    const sourceCountryStats: Record<string, number> = {};
+    attacks.forEach(attack => {
+      sourceCountryStats[attack.sourceCountry] = (sourceCountryStats[attack.sourceCountry] || 0) + 1;
+    });
+    stats.topSourceCountries = Object.entries(sourceCountryStats)
+      .map(([country, attacks]) => ({ country, attacks }))
+      .sort((a, b) => b.attacks - a.attacks)
+      .slice(0, 10);
+
+    // Calculate top target countries
+    const targetCountryStats: Record<string, number> = {};
+    attacks.forEach(attack => {
+      targetCountryStats[attack.targetCountry] = (targetCountryStats[attack.targetCountry] || 0) + 1;
+    });
+    stats.topTargetCountries = Object.entries(targetCountryStats)
+      .map(([country, attacks]) => ({ country, attacks }))
+      .sort((a, b) => b.attacks - a.attacks)
+      .slice(0, 10);
+
+    // Calculate top attack types
+    const attackTypeStats: Record<string, number> = {};
+    attacks.forEach(attack => {
+      attackTypeStats[attack.attackType] = (attackTypeStats[attack.attackType] || 0) + 1;
+    });
+    stats.topAttackTypes = Object.entries(attackTypeStats)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    setGlobalStats(stats);
+  }, [attacks]);
+
   const toggleDataSource = async () => {
     if (dataSource === 'mock') {
       setIsLoadingRealData(true);
@@ -74,10 +177,6 @@ function App() {
       setAttacks(initialAttacks);
     }
   };
-
-  const activeAttacks = attacks.filter(attack => attack.status === 'active').length;
-  const blockedAttacks = attacks.filter(attack => attack.status === 'blocked').length;
-  const criticalAttacks = attacks.filter(attack => attack.severity === 'critical').length;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -123,16 +222,24 @@ function App() {
             
             <div className="flex items-center space-x-4 text-sm">
               <div className="flex items-center space-x-1">
-                <Activity className="w-4 h-4 text-green-400" />
-                <span>{activeAttacks} Active</span>
+                <Activity className="w-4 h-4 text-red-400" />
+                <span>{globalStats.activeAttacks} Active</span>
               </div>
               <div className="flex items-center space-x-1">
                 <Shield className="w-4 h-4 text-blue-400" />
-                <span>{blockedAttacks} Blocked</span>
+                <span>{globalStats.blockedAttacks} Blocked</span>
               </div>
               <div className="flex items-center space-x-1">
-                <AlertTriangle className="w-4 h-4 text-red-400" />
-                <span>{criticalAttacks} Critical</span>
+                <AlertTriangle className="w-4 h-4 text-orange-400" />
+                <span>{globalStats.criticalAttacks} Critical</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Users className="w-4 h-4 text-purple-400" />
+                <span>{globalStats.topThreatActors.length} Threat Actors</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <span>{globalStats.uniqueCountries} Countries</span>
               </div>
             </div>
           </div>
@@ -166,7 +273,7 @@ function App() {
       <main className="flex h-[calc(100vh-140px)]">
         {/* Always visible map */}
         <div className="flex-1">
-          <WorldMap attacks={attacks} />
+          <WorldMap attacks={attacks} globalStats={globalStats} />
         </div>
         
         {/* Side panel for other views */}
@@ -182,8 +289,8 @@ function App() {
                 className="h-full overflow-hidden"
               >
                 {activeView === 'feed' && <AttackFeed attacks={attacks} />}
-                {activeView === 'actors' && <ThreatActors threatActors={threatActors} />}
-                {activeView === 'stats' && <AttackStats attacks={attacks} />}
+                {activeView === 'actors' && <ThreatActors threatActors={threatActors} globalStats={globalStats} />}
+                {activeView === 'stats' && <AttackStats attacks={attacks} globalStats={globalStats} />}
               </motion.div>
             </AnimatePresence>
           </div>

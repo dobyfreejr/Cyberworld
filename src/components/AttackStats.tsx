@@ -6,9 +6,24 @@ import { Attack } from '../types/attack';
 
 interface AttackStatsProps {
   attacks: Attack[];
+  globalStats: {
+    totalAttacks: number;
+    activeAttacks: number;
+    blockedAttacks: number;
+    resolvedAttacks: number;
+    criticalAttacks: number;
+    highAttacks: number;
+    mediumAttacks: number;
+    lowAttacks: number;
+    uniqueCountries: number;
+    topThreatActors: { name: string; attacks: number; country: string; riskLevel: string }[];
+    topSourceCountries: { country: string; attacks: number }[];
+    topTargetCountries: { country: string; attacks: number }[];
+    topAttackTypes: { type: string; count: number }[];
+  };
 }
 
-const AttackStats: React.FC<AttackStatsProps> = ({ attacks }) => {
+const AttackStats: React.FC<AttackStatsProps> = ({ attacks, globalStats }) => {
   const stats = useMemo(() => {
     const now = new Date();
     const last24Hours = attacks.filter(attack => 
@@ -105,13 +120,13 @@ const AttackStats: React.FC<AttackStatsProps> = ({ attacks }) => {
       {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         {[
-          { label: 'Total Attacks', value: stats.total, icon: Target, color: 'text-cyan-400', bg: 'bg-cyan-400/20' },
-          { label: '24h Attacks', value: stats.last24Hours, icon: Activity, color: 'text-blue-400', bg: 'bg-blue-400/20' },
-          { label: 'Active', value: stats.active, icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-400/20' },
-          { label: 'Blocked', value: stats.blocked, icon: Shield, color: 'text-green-400', bg: 'bg-green-400/20' },
-          { label: 'Critical', value: stats.critical, icon: AlertTriangle, color: 'text-orange-400', bg: 'bg-orange-400/20' },
-          { label: 'Countries', value: stats.topCountries.length, icon: Globe, color: 'text-purple-400', bg: 'bg-purple-400/20' }
-        ].slice(0, 4).map((metric, index) => (
+          { label: 'Total Attacks', value: globalStats.totalAttacks, icon: Target, color: 'text-cyan-400', bg: 'bg-cyan-400/20' },
+          { label: 'Active', value: globalStats.activeAttacks, icon: Activity, color: 'text-red-400', bg: 'bg-red-400/20' },
+          { label: 'Critical', value: globalStats.criticalAttacks, icon: AlertTriangle, color: 'text-orange-400', bg: 'bg-orange-400/20' },
+          { label: 'Blocked', value: globalStats.blockedAttacks, icon: Shield, color: 'text-green-400', bg: 'bg-green-400/20' },
+          { label: 'Countries', value: globalStats.uniqueCountries, icon: Globe, color: 'text-purple-400', bg: 'bg-purple-400/20' },
+          { label: 'Threat Actors', value: globalStats.topThreatActors.length, icon: TrendingUp, color: 'text-yellow-400', bg: 'bg-yellow-400/20' }
+        ].map((metric, index) => (
           <motion.div
             key={metric.label}
             initial={{ opacity: 0, scale: 0.9 }}
@@ -130,6 +145,41 @@ const AttackStats: React.FC<AttackStatsProps> = ({ attacks }) => {
             </div>
           </motion.div>
         ))}
+      </div>
+
+      {/* Enhanced Analytics */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        {/* Top Attack Types */}
+        <div className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
+          <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
+            <Target className="w-4 h-4 mr-2 text-red-400" />
+            Top Attack Types
+          </h3>
+          <div className="space-y-2">
+            {globalStats.topAttackTypes.slice(0, 5).map((attackType, index) => (
+              <div key={attackType.type} className="flex items-center justify-between">
+                <span className="text-xs text-gray-300 truncate">{attackType.type}</span>
+                <span className="text-xs font-bold text-red-400">{attackType.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top Target Countries */}
+        <div className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
+          <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
+            <Globe className="w-4 h-4 mr-2 text-blue-400" />
+            Most Targeted
+          </h3>
+          <div className="space-y-2">
+            {globalStats.topTargetCountries.slice(0, 5).map((country, index) => (
+              <div key={country.country} className="flex items-center justify-between">
+                <span className="text-xs text-gray-300 truncate">{country.country}</span>
+                <span className="text-xs font-bold text-blue-400">{country.attacks}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Charts Grid */}
@@ -172,11 +222,11 @@ const AttackStats: React.FC<AttackStatsProps> = ({ attacks }) => {
           className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-700"
         >
           <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
-            <Globe className="w-5 h-5 mr-2 text-green-400" />
+            <Globe className="w-4 h-4 mr-2 text-green-400" />
             Top Source Countries
           </h3>
           <div className="space-y-2">
-            {stats.topCountries.slice(0, 6).map((country, index) => (
+            {globalStats.topSourceCountries.slice(0, 6).map((country, index) => (
               <div key={country.country} className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <span className="text-xs font-medium text-gray-400 w-4">#{index + 1}</span>
@@ -186,7 +236,7 @@ const AttackStats: React.FC<AttackStatsProps> = ({ attacks }) => {
                   <div className="w-16 bg-gray-700 rounded-full h-1.5">
                     <div 
                       className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full"
-                      style={{ width: `${(country.attacks / stats.topCountries[0].attacks) * 100}%` }}
+                      style={{ width: `${(country.attacks / globalStats.topSourceCountries[0].attacks) * 100}%` }}
                     />
                   </div>
                   <span className="text-xs font-bold text-cyan-400 w-8 text-right">

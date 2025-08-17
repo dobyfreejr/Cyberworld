@@ -8,6 +8,21 @@ import { AlertTriangle, Shield, Activity, TrendingUp, MapPin, Zap, Target, Wifi 
 
 interface WorldMapProps {
   attacks: Attack[];
+  globalStats: {
+    totalAttacks: number;
+    activeAttacks: number;
+    blockedAttacks: number;
+    resolvedAttacks: number;
+    criticalAttacks: number;
+    highAttacks: number;
+    mediumAttacks: number;
+    lowAttacks: number;
+    uniqueCountries: number;
+    topThreatActors: { name: string; attacks: number; country: string; riskLevel: string }[];
+    topSourceCountries: { country: string; attacks: number }[];
+    topTargetCountries: { country: string; attacks: number }[];
+    topAttackTypes: { type: string; count: number }[];
+  };
 }
 
 interface CountryStats {
@@ -19,7 +34,7 @@ interface CountryStats {
   recentAttacks: Attack[];
 }
 
-const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
+const WorldMap: React.FC<WorldMapProps> = ({ attacks, globalStats }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const animationRef = useRef<number>();
   const [worldData, setWorldData] = useState<any>(null);
@@ -567,21 +582,50 @@ const WorldMap: React.FC<WorldMapProps> = ({ attacks }) => {
 
         {/* Stats Panel */}
         <div className="absolute top-6 right-6 bg-black/80 backdrop-blur-sm px-4 py-3 rounded-lg border border-gray-700">
-          <div className="text-xs text-gray-400 mb-2 font-semibold">GLOBAL STATS</div>
+          <div className="text-xs text-gray-400 mb-3 font-semibold">GLOBAL INTELLIGENCE</div>
           <div className="space-y-1 text-xs">
             <div className="flex justify-between items-center">
               <span className="text-gray-300">Total Attacks:</span>
-              <span className="text-white font-bold">{attacks.length.toLocaleString()}</span>
+              <span className="text-white font-bold">{globalStats.totalAttacks.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-300">Active:</span>
+              <span className="text-red-400 font-bold animate-pulse">{globalStats.activeAttacks}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-300">Critical:</span>
+              <span className="text-orange-400 font-bold">{globalStats.criticalAttacks}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-300">Countries:</span>
-              <span className="text-white font-bold">{Object.keys(countryStats).length}</span>
+              <span className="text-cyan-400 font-bold">{globalStats.uniqueCountries}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-300">Blocked:</span>
-              <span className="text-green-400 font-bold">{attacks.filter(a => a.status === 'blocked').length}</span>
+              <span className="text-gray-300">Threat Actors:</span>
+              <span className="text-purple-400 font-bold">{globalStats.topThreatActors.length}</span>
             </div>
           </div>
+          
+          {globalStats.topThreatActors.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <div className="text-xs text-gray-400 mb-2 font-semibold">TOP THREATS</div>
+              <div className="space-y-1">
+                {globalStats.topThreatActors.slice(0, 3).map((actor, index) => (
+                  <div key={actor.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-1">
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        actor.riskLevel === 'critical' ? 'bg-red-500' :
+                        actor.riskLevel === 'high' ? 'bg-orange-500' :
+                        actor.riskLevel === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}></span>
+                      <span className="text-gray-300 truncate max-w-20">{actor.name}</span>
+                    </div>
+                    <span className="text-red-400 font-bold">{actor.attacks}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
