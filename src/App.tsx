@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Shield, AlertTriangle, Activity, Users, Target, Play, Pause, Eye, Zap } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import WorldMap from './components/WorldMap';
 import AttackFeed from './components/AttackFeed';
 import ThreatActors from './components/ThreatActors';
 import AttackStats from './components/AttackStats';
+import ThreatFamilyTracker from './components/ThreatFamilyTracker';
 import { Attack, ThreatActor } from './types/attack';
 import { realAttackDataService } from './data/realAttackData';
+import { threatDatabase } from './database/threatDatabase';
 
 function App() {
   const [attacks, setAttacks] = useState<Attack[]>([]);
   const [threatActors, setThreatActors] = useState<ThreatActor[]>([]);
-  const [activeView, setActiveView] = useState<'map' | 'feed' | 'actors' | 'stats'>('map');
+  const [activeView, setActiveView] = useState<'map' | 'feed' | 'actors' | 'stats' | 'families'>('map');
   const [isLive, setIsLive] = useState(true);
+  const [dbStats, setDbStats] = useState<any>(null);
   const [globalStats, setGlobalStats] = useState({
     totalAttacks: 0,
     activeAttacks: 0,
@@ -31,11 +35,25 @@ function App() {
 
   useEffect(() => {
     // Start real-time data collection
-    console.log('🚀 Starting real OTX + AbuseIPDB threat intelligence data...');
+    console.log('🚀 Starting real OTX + AbuseIPDB + MISP threat intelligence data with database storage...');
     realAttackDataService.startRealTimeCollection();
+
+    // Load database statistics
+    const loadDbStats = () => {
+      try {
+        const stats = threatDatabase.getStats();
+        setDbStats(stats);
+      } catch (error) {
+        console.error('Failed to load database stats:', error);
+      }
+    };
+    
+    loadDbStats();
+    const statsInterval = setInterval(loadDbStats, 30000); // Update every 30 seconds
 
     return () => {
       realAttackDataService.stopRealTimeCollection();
+      clearInterval(statsInterval);
     };
   }, []);
 
@@ -175,6 +193,12 @@ function App() {
             </div>
             
             <div className="flex items-center space-x-4 text-sm">
+              {dbStats && (
+                <div className="flex items-center space-x-1">
+                  <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                  <span className="text-green-400">{dbStats.totalAttacks.toLocaleString()} Stored</span>
+                </div>
+              )}
               <div className="flex items-center space-x-1">
                 <Activity className="w-4 h-4 text-red-400" />
                 <span>{globalStats.activeAttacks} Active</span>
@@ -205,7 +229,8 @@ function App() {
             { id: 'map', label: 'World Map', icon: Globe },
             { id: 'feed', label: 'Attack Feed', icon: Activity },
             { id: 'actors', label: 'Threat Actors', icon: Users },
-            { id: 'stats', label: 'Analytics', icon: Target }
+            { id: 'stats', label: 'Analytics', icon: Target },
+            { id: 'families', label: 'Threat Families', icon: TrendingUp }
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -245,6 +270,7 @@ function App() {
                 {activeView === 'feed' && <AttackFeed attacks={attacks} />}
                 {activeView === 'actors' && <ThreatActors threatActors={threatActors} globalStats={globalStats} />}
                 {activeView === 'stats' && <AttackStats attacks={attacks} globalStats={globalStats} />}
+                {activeView === 'families' && <ThreatFamilyTracker />}
               </motion.div>
             </AnimatePresence>
           </div>

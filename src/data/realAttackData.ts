@@ -1,4 +1,6 @@
 import { Attack } from '../types/attack';
+import { threatDatabase } from '../database/threatDatabase';
+import { mispService } from '../services/mispService';
 
 // AlienVault OTX API configuration
 const OTX_API_KEY = 'cc96cc2f26ffb706a6461276ceffc9a0a6739376a4bb6613199cc27f0857310b';
@@ -637,10 +639,17 @@ export class RealAttackDataService {
     if (this.isActive) return;
     
     this.isActive = true;
-    console.log('🔴 Starting real-time cyber attack data collection from OTX + AbuseIPDB...');
+    console.log('🔴 Starting real-time cyber attack data collection from OTX + AbuseIPDB + MISP...');
+    
+    // Start MISP service
+    mispService.startRealTimeCollection();
     
     // Initial fetch
     this.fetchRealTimeAttacks().then(attacks => {
+      // Store attacks in database
+      attacks.forEach(attack => {
+        threatDatabase.storeAttack(attack);
+      });
       this.attackQueue.push(...attacks);
       this.lastFetchTime = Date.now(); // Set timer after successful fetch
     });
@@ -651,6 +660,10 @@ export class RealAttackDataService {
         const now = Date.now();
         if (now - this.lastFetchTime > 3600000) { // 1 hour minimum between API calls
           const newAttacks = await this.fetchRealTimeAttacks();
+          // Store new attacks in database
+          newAttacks.forEach(attack => {
+            threatDatabase.storeAttack(attack);
+          });
           this.attackQueue.push(...newAttacks);
           this.lastFetchTime = now;
           
@@ -661,6 +674,10 @@ export class RealAttackDataService {
         } else {
           // Generate realistic attacks between API calls
           const realisticAttacks = this.generateRealisticAttacks();
+          // Store realistic attacks in database
+          realisticAttacks.forEach(attack => {
+            threatDatabase.storeAttack(attack);
+          });
           this.attackQueue.push(...realisticAttacks);
         }
       }
@@ -669,7 +686,8 @@ export class RealAttackDataService {
 
   stopRealTimeCollection(): void {
     this.isActive = false;
-    console.log('⏹️ Stopped real-time cyber attack data collection from OTX + AbuseIPDB');
+    mispService.stopRealTimeCollection();
+    console.log('⏹️ Stopped real-time cyber attack data collection from OTX + AbuseIPDB + MISP');
   }
 
   getQueuedAttacks(): Attack[] {
