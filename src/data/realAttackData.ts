@@ -651,7 +651,7 @@ export class RealAttackDataService {
     setInterval(async () => {
       if (this.isActive) {
         const now = Date.now();
-        if (now - this.lastFetchTime > 45000) { // 45 second minimum between API calls
+        if (now - this.lastFetchTime > 300000) { // 5 minute minimum between API calls
           const newAttacks = await this.fetchRealTimeAttacks();
           this.attackQueue.push(...newAttacks);
           this.lastFetchTime = now;
