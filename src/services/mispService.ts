@@ -235,7 +235,7 @@ export class MispService {
             };
 
             families.push(family);
-            threatDatabase.storeThreatFamily(family);
+            threatDatabase.storeThreatFamily(family).catch(console.error);
           });
         }
       });
@@ -263,7 +263,7 @@ export class MispService {
         };
 
         actors.push(actor);
-        threatDatabase.storeThreatActor(actor);
+        threatDatabase.storeThreatActor(actor).catch(console.error);
       }
     });
 

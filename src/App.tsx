@@ -41,8 +41,11 @@ function App() {
     // Load database statistics
     const loadDbStats = () => {
       try {
-        const stats = threatDatabase.getStats();
-        setDbStats(stats);
+        threatDatabase.getStats().then(stats => {
+          setDbStats(stats);
+        }).catch(error => {
+          console.error('Failed to load database stats:', error);
+        });
       } catch (error) {
         console.error('Failed to load database stats:', error);
       }

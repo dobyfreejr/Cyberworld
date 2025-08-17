@@ -648,7 +648,7 @@ export class RealAttackDataService {
     this.fetchRealTimeAttacks().then(attacks => {
       // Store attacks in database
       attacks.forEach(attack => {
-        threatDatabase.storeAttack(attack);
+        threatDatabase.storeAttack(attack).catch(console.error);
       });
       this.attackQueue.push(...attacks);
       this.lastFetchTime = Date.now(); // Set timer after successful fetch
