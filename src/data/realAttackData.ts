@@ -642,13 +642,14 @@ export class RealAttackDataService {
     // Initial fetch
     this.fetchRealTimeAttacks().then(attacks => {
       this.attackQueue.push(...attacks);
+      this.lastFetchTime = Date.now(); // Set timer after successful fetch
     });
     
     // Fetch new data every 45 seconds (respecting API limits for both services)
     setInterval(async () => {
       if (this.isActive) {
         const now = Date.now();
-        if (now - this.lastFetchTime > 1800000) { // 30 minute minimum between API calls
+        if (now - this.lastFetchTime > 3600000) { // 1 hour minimum between API calls
           const newAttacks = await this.fetchRealTimeAttacks();
           this.attackQueue.push(...newAttacks);
           this.lastFetchTime = now;
