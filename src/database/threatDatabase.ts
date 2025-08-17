@@ -1,4 +1,3 @@
-import Database from 'better-sqlite3';
 import { Attack, ThreatActor } from '../types/attack';
 
 export interface ThreatFamily {
@@ -33,12 +32,13 @@ export interface ThreatEvolution {
 }
 
 export class ThreatDatabase {
-  private db: Database.Database;
+  private db: IDBDatabase | null = null;
   private static instance: ThreatDatabase;
+  private dbName = 'ThreatIntelligenceDB';
+  private dbVersion = 1;
 
   constructor() {
-    this.db = new Database('threat_intelligence.db');
-    this.initializeTables();
+    this.initializeDatabase();
   }
 
   static getInstance(): ThreatDatabase {
@@ -48,347 +48,379 @@ export class ThreatDatabase {
     return ThreatDatabase.instance;
   }
 
-  private initializeTables(): void {
-    // Attacks table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS attacks (
-        id TEXT PRIMARY KEY,
-        timestamp INTEGER NOT NULL,
-        source_country TEXT NOT NULL,
-        target_country TEXT NOT NULL,
-        attack_type TEXT NOT NULL,
-        severity TEXT NOT NULL,
-        status TEXT NOT NULL,
-        source_ip TEXT NOT NULL,
-        target_ip TEXT NOT NULL,
-        port INTEGER NOT NULL,
-        protocol TEXT NOT NULL,
-        threat_actor TEXT,
-        threat_family TEXT,
-        misp_event_id TEXT,
-        created_at INTEGER DEFAULT (strftime('%s', 'now'))
-      )
-    `);
+  private async initializeDatabase(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.dbVersion);
 
-    // Threat families table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS threat_families (
-        id TEXT PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        category TEXT NOT NULL,
-        first_seen INTEGER NOT NULL,
-        last_seen INTEGER NOT NULL,
-        total_attacks INTEGER DEFAULT 0,
-        countries TEXT, -- JSON array
-        description TEXT,
-        aliases TEXT, -- JSON array
-        techniques TEXT, -- JSON array
-        target_sectors TEXT, -- JSON array
-        misp_galaxy_id TEXT,
-        created_at INTEGER DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER DEFAULT (strftime('%s', 'now'))
-      )
-    `);
+      request.onerror = () => {
+        console.error('Failed to open IndexedDB:', request.error);
+        reject(request.error);
+      };
 
-    // Threat actors table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS threat_actors (
-        id TEXT PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        country TEXT NOT NULL,
-        type TEXT NOT NULL,
-        active_attacks INTEGER DEFAULT 0,
-        total_attacks INTEGER DEFAULT 0,
-        last_seen INTEGER NOT NULL,
-        risk_level TEXT NOT NULL,
-        associated_families TEXT, -- JSON array
-        misp_galaxy_id TEXT,
-        created_at INTEGER DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER DEFAULT (strftime('%s', 'now'))
-      )
-    `);
+      request.onsuccess = () => {
+        this.db = request.result;
+        console.log('✅ Threat intelligence database initialized with IndexedDB');
+        resolve();
+      };
 
-    // Historical statistics table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS historical_stats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,
-        threat_family TEXT NOT NULL,
-        attack_count INTEGER NOT NULL,
-        countries TEXT, -- JSON array
-        severity TEXT NOT NULL,
-        created_at INTEGER DEFAULT (strftime('%s', 'now'))
-      )
-    `);
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
 
-    // MISP events table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS misp_events (
-        id TEXT PRIMARY KEY,
-        event_id TEXT UNIQUE NOT NULL,
-        info TEXT NOT NULL,
-        threat_level_id INTEGER NOT NULL,
-        analysis INTEGER NOT NULL,
-        date TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        org_id TEXT,
-        orgc_id TEXT,
-        attributes TEXT, -- JSON array
-        tags TEXT, -- JSON array
-        galaxy_clusters TEXT, -- JSON array
-        created_at INTEGER DEFAULT (strftime('%s', 'now'))
-      )
-    `);
+        // Attacks store
+        if (!db.objectStoreNames.contains('attacks')) {
+          const attacksStore = db.createObjectStore('attacks', { keyPath: 'id' });
+          attacksStore.createIndex('timestamp', 'timestamp');
+          attacksStore.createIndex('threatFamily', 'threatFamily');
+          attacksStore.createIndex('sourceCountry', 'sourceCountry');
+        }
 
-    // Create indexes for better performance
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_attacks_timestamp ON attacks(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_attacks_threat_family ON attacks(threat_family);
-      CREATE INDEX IF NOT EXISTS idx_attacks_source_country ON attacks(source_country);
-      CREATE INDEX IF NOT EXISTS idx_threat_families_category ON threat_families(category);
-      CREATE INDEX IF NOT EXISTS idx_historical_stats_date ON historical_stats(date);
-      CREATE INDEX IF NOT EXISTS idx_misp_events_timestamp ON misp_events(timestamp);
-    `);
+        // Threat families store
+        if (!db.objectStoreNames.contains('threatFamilies')) {
+          const familiesStore = db.createObjectStore('threatFamilies', { keyPath: 'id' });
+          familiesStore.createIndex('name', 'name', { unique: true });
+          familiesStore.createIndex('category', 'category');
+        }
 
-    console.log('✅ Threat intelligence database initialized');
+        // Threat actors store
+        if (!db.objectStoreNames.contains('threatActors')) {
+          const actorsStore = db.createObjectStore('threatActors', { keyPath: 'id' });
+          actorsStore.createIndex('name', 'name', { unique: true });
+          actorsStore.createIndex('country', 'country');
+        }
+
+        // MISP events store
+        if (!db.objectStoreNames.contains('mispEvents')) {
+          const mispStore = db.createObjectStore('mispEvents', { keyPath: 'id' });
+          mispStore.createIndex('eventId', 'eventId', { unique: true });
+          mispStore.createIndex('timestamp', 'timestamp');
+        }
+      };
+    });
+  }
+
+  private async ensureDatabase(): Promise<IDBDatabase> {
+    if (!this.db) {
+      await this.initializeDatabase();
+    }
+    return this.db!;
   }
 
   // Store attack data
-  storeAttack(attack: Attack, threatFamily?: string, mispEventId?: string): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO attacks (
-        id, timestamp, source_country, target_country, attack_type, 
-        severity, status, source_ip, target_ip, port, protocol, 
-        threat_actor, threat_family, misp_event_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  async storeAttack(attack: Attack, threatFamily?: string, mispEventId?: string): Promise<void> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['attacks'], 'readwrite');
+      const store = transaction.objectStore('attacks');
 
-    stmt.run(
-      attack.id,
-      attack.timestamp.getTime(),
-      attack.sourceCountry,
-      attack.targetCountry,
-      attack.attackType,
-      attack.severity,
-      attack.status,
-      attack.sourceIP,
-      attack.targetIP,
-      attack.port,
-      attack.protocol,
-      attack.threatActor || null,
-      threatFamily || null,
-      mispEventId || null
-    );
+      const attackData = {
+        ...attack,
+        timestamp: attack.timestamp.getTime(),
+        threatFamily: threatFamily || null,
+        mispEventId: mispEventId || null,
+        createdAt: Date.now()
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const request = store.put(attackData);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to store attack:', error);
+    }
   }
 
   // Store threat family data
-  storeThreatFamily(family: ThreatFamily): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO threat_families (
-        id, name, category, first_seen, last_seen, total_attacks,
-        countries, description, aliases, techniques, target_sectors,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  async storeThreatFamily(family: ThreatFamily): Promise<void> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['threatFamilies'], 'readwrite');
+      const store = transaction.objectStore('threatFamilies');
 
-    stmt.run(
-      family.id,
-      family.name,
-      family.category,
-      family.firstSeen.getTime(),
-      family.lastSeen.getTime(),
-      family.totalAttacks,
-      JSON.stringify(family.countries),
-      family.description || null,
-      JSON.stringify(family.aliases),
-      JSON.stringify(family.techniques),
-      JSON.stringify(family.targetSectors),
-      Date.now()
-    );
+      const familyData = {
+        ...family,
+        firstSeen: family.firstSeen.getTime(),
+        lastSeen: family.lastSeen.getTime(),
+        updatedAt: Date.now()
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const request = store.put(familyData);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to store threat family:', error);
+    }
   }
 
   // Store threat actor data
-  storeThreatActor(actor: ThreatActor, associatedFamilies: string[] = []): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO threat_actors (
-        id, name, country, type, active_attacks, total_attacks,
-        last_seen, risk_level, associated_families, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  async storeThreatActor(actor: ThreatActor, associatedFamilies: string[] = []): Promise<void> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['threatActors'], 'readwrite');
+      const store = transaction.objectStore('threatActors');
 
-    stmt.run(
-      actor.id,
-      actor.name,
-      actor.country,
-      actor.type,
-      actor.activeAttacks,
-      actor.totalAttacks,
-      actor.lastSeen.getTime(),
-      actor.riskLevel,
-      JSON.stringify(associatedFamilies),
-      Date.now()
-    );
+      const actorData = {
+        ...actor,
+        lastSeen: actor.lastSeen.getTime(),
+        associatedFamilies,
+        updatedAt: Date.now()
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const request = store.put(actorData);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to store threat actor:', error);
+    }
   }
 
   // Get threat family evolution over time
-  getThreatFamilyEvolution(familyName: string, days: number = 30): ThreatEvolution[] {
-    const stmt = this.db.prepare(`
-      SELECT 
-        DATE(timestamp/1000, 'unixepoch') as date,
-        COUNT(*) as attack_count,
-        GROUP_CONCAT(DISTINCT source_country) as countries,
-        GROUP_CONCAT(DISTINCT attack_type) as techniques,
-        severity
-      FROM attacks 
-      WHERE threat_family = ? 
-        AND timestamp > ? 
-      GROUP BY DATE(timestamp/1000, 'unixepoch'), severity
-      ORDER BY date DESC
-    `);
+  async getThreatFamilyEvolution(familyName: string, days: number = 30): Promise<ThreatEvolution[]> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['attacks'], 'readonly');
+      const store = transaction.objectStore('attacks');
+      const index = store.index('timestamp');
 
-    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const rows = stmt.all(familyName, cutoffTime) as any[];
+      const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+      const range = IDBKeyRange.lowerBound(cutoffTime);
 
-    return rows.map(row => ({
-      threatFamily: familyName,
-      timeframe: row.date,
-      attackCount: row.attack_count,
-      newCountries: row.countries ? row.countries.split(',') : [],
-      techniques: row.techniques ? row.techniques.split(',') : [],
-      severity: row.severity
-    }));
-  }
+      const attacks: any[] = [];
+      
+      await new Promise<void>((resolve, reject) => {
+        const request = index.openCursor(range);
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            const attack = cursor.value;
+            if (attack.threatFamily === familyName) {
+              attacks.push(attack);
+            }
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
 
-  // Get historical statistics
-  getHistoricalStats(days: number = 30): HistoricalStats[] {
-    const stmt = this.db.prepare(`
-      SELECT 
-        DATE(timestamp/1000, 'unixepoch') as date,
-        threat_family,
-        COUNT(*) as attack_count,
-        GROUP_CONCAT(DISTINCT source_country) as countries,
-        severity
-      FROM attacks 
-      WHERE timestamp > ? 
-        AND threat_family IS NOT NULL
-      GROUP BY DATE(timestamp/1000, 'unixepoch'), threat_family, severity
-      ORDER BY date DESC, attack_count DESC
-    `);
+      // Group by date and severity
+      const grouped: { [key: string]: ThreatEvolution } = {};
+      
+      attacks.forEach(attack => {
+        const date = new Date(attack.timestamp).toISOString().split('T')[0];
+        const key = `${date}-${attack.severity}`;
+        
+        if (!grouped[key]) {
+          grouped[key] = {
+            threatFamily: familyName,
+            timeframe: date,
+            attackCount: 0,
+            newCountries: [],
+            techniques: [],
+            severity: attack.severity
+          };
+        }
+        
+        grouped[key].attackCount++;
+        if (!grouped[key].newCountries.includes(attack.sourceCountry)) {
+          grouped[key].newCountries.push(attack.sourceCountry);
+        }
+        if (!grouped[key].techniques.includes(attack.attackType)) {
+          grouped[key].techniques.push(attack.attackType);
+        }
+      });
 
-    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const rows = stmt.all(cutoffTime) as any[];
-
-    return rows.map(row => ({
-      date: row.date,
-      threatFamily: row.threat_family,
-      attackCount: row.attack_count,
-      countries: row.countries ? row.countries.split(',') : [],
-      severity: row.severity
-    }));
+      return Object.values(grouped).sort((a, b) => b.timeframe.localeCompare(a.timeframe));
+    } catch (error) {
+      console.error('Failed to get threat family evolution:', error);
+      return [];
+    }
   }
 
   // Get top threat families by time period
-  getTopThreatFamilies(days: number = 7): ThreatFamily[] {
-    const stmt = this.db.prepare(`
-      SELECT 
-        tf.*,
-        COUNT(a.id) as recent_attacks
-      FROM threat_families tf
-      LEFT JOIN attacks a ON tf.name = a.threat_family 
-        AND a.timestamp > ?
-      GROUP BY tf.id
-      ORDER BY recent_attacks DESC, tf.total_attacks DESC
-      LIMIT 20
-    `);
+  async getTopThreatFamilies(days: number = 7): Promise<ThreatFamily[]> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['threatFamilies', 'attacks'], 'readonly');
+      const familiesStore = transaction.objectStore('threatFamilies');
+      const attacksStore = transaction.objectStore('attacks');
 
-    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const rows = stmt.all(cutoffTime) as any[];
+      const families: any[] = [];
+      const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
 
-    return rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      category: row.category,
-      firstSeen: new Date(row.first_seen),
-      lastSeen: new Date(row.last_seen),
-      totalAttacks: row.total_attacks,
-      countries: JSON.parse(row.countries || '[]'),
-      description: row.description,
-      aliases: JSON.parse(row.aliases || '[]'),
-      techniques: JSON.parse(row.techniques || '[]'),
-      targetSectors: JSON.parse(row.target_sectors || '[]')
-    }));
-  }
+      // Get all families
+      await new Promise<void>((resolve, reject) => {
+        const request = familiesStore.openCursor();
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            families.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
 
-  // Get threat actor activity over time
-  getThreatActorActivity(actorName: string, days: number = 30): any[] {
-    const stmt = this.db.prepare(`
-      SELECT 
-        DATE(timestamp/1000, 'unixepoch') as date,
-        COUNT(*) as attacks,
-        GROUP_CONCAT(DISTINCT target_country) as targets,
-        GROUP_CONCAT(DISTINCT attack_type) as techniques
-      FROM attacks 
-      WHERE threat_actor = ? 
-        AND timestamp > ?
-      GROUP BY DATE(timestamp/1000, 'unixepoch')
-      ORDER BY date DESC
-    `);
+      // Count recent attacks for each family
+      const familyAttackCounts: { [key: string]: number } = {};
+      
+      await new Promise<void>((resolve, reject) => {
+        const index = attacksStore.index('timestamp');
+        const range = IDBKeyRange.lowerBound(cutoffTime);
+        const request = index.openCursor(range);
+        
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            const attack = cursor.value;
+            if (attack.threatFamily) {
+              familyAttackCounts[attack.threatFamily] = (familyAttackCounts[attack.threatFamily] || 0) + 1;
+            }
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
 
-    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
-    return stmt.all(actorName, cutoffTime);
+      // Convert and sort families
+      return families
+        .map(family => ({
+          id: family.id,
+          name: family.name,
+          category: family.category,
+          firstSeen: new Date(family.firstSeen),
+          lastSeen: new Date(family.lastSeen),
+          totalAttacks: family.totalAttacks,
+          countries: family.countries || [],
+          description: family.description,
+          aliases: family.aliases || [],
+          techniques: family.techniques || [],
+          targetSectors: family.targetSectors || [],
+          recentAttacks: familyAttackCounts[family.name] || 0
+        }))
+        .sort((a: any, b: any) => b.recentAttacks - a.recentAttacks)
+        .slice(0, 20);
+    } catch (error) {
+      console.error('Failed to get top threat families:', error);
+      return [];
+    }
   }
 
   // Store MISP event data
-  storeMispEvent(event: any): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO misp_events (
-        id, event_id, info, threat_level_id, analysis, date, timestamp,
-        org_id, orgc_id, attributes, tags, galaxy_clusters
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  async storeMispEvent(event: any): Promise<void> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['mispEvents'], 'readwrite');
+      const store = transaction.objectStore('mispEvents');
 
-    stmt.run(
-      `misp-${event.id}`,
-      event.id,
-      event.info,
-      event.threat_level_id,
-      event.analysis,
-      event.date,
-      parseInt(event.timestamp),
-      event.org_id || null,
-      event.orgc_id || null,
-      JSON.stringify(event.Attribute || []),
-      JSON.stringify(event.Tag || []),
-      JSON.stringify(event.Galaxy || [])
-    );
+      const eventData = {
+        id: `misp-${event.id}`,
+        eventId: event.id,
+        info: event.info,
+        threatLevelId: event.threat_level_id,
+        analysis: event.analysis,
+        date: event.date,
+        timestamp: parseInt(event.timestamp),
+        orgId: event.org_id || null,
+        orgcId: event.orgc_id || null,
+        attributes: JSON.stringify(event.Attribute || []),
+        tags: JSON.stringify(event.Tag || []),
+        galaxyClusters: JSON.stringify(event.Galaxy || [])
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const request = store.put(eventData);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to store MISP event:', error);
+    }
   }
 
   // Get database statistics
-  getStats(): any {
-    const stats = {
-      totalAttacks: this.db.prepare('SELECT COUNT(*) as count FROM attacks').get() as any,
-      totalFamilies: this.db.prepare('SELECT COUNT(*) as count FROM threat_families').get() as any,
-      totalActors: this.db.prepare('SELECT COUNT(*) as count FROM threat_actors').get() as any,
-      totalMispEvents: this.db.prepare('SELECT COUNT(*) as count FROM misp_events').get() as any,
-      oldestAttack: this.db.prepare('SELECT MIN(timestamp) as timestamp FROM attacks').get() as any,
-      newestAttack: this.db.prepare('SELECT MAX(timestamp) as timestamp FROM attacks').get() as any
-    };
+  async getStats(): Promise<any> {
+    try {
+      const db = await this.ensureDatabase();
+      const transaction = db.transaction(['attacks', 'threatFamilies', 'threatActors', 'mispEvents'], 'readonly');
 
-    return {
-      totalAttacks: stats.totalAttacks.count,
-      totalFamilies: stats.totalFamilies.count,
-      totalActors: stats.totalActors.count,
-      totalMispEvents: stats.totalMispEvents.count,
-      dataRange: {
-        oldest: stats.oldestAttack.timestamp ? new Date(stats.oldestAttack.timestamp) : null,
-        newest: stats.newestAttack.timestamp ? new Date(stats.newestAttack.timestamp) : null
-      }
-    };
+      const stats = {
+        totalAttacks: 0,
+        totalFamilies: 0,
+        totalActors: 0,
+        totalMispEvents: 0,
+        oldestAttack: null as Date | null,
+        newestAttack: null as Date | null
+      };
+
+      // Count attacks
+      await new Promise<void>((resolve, reject) => {
+        const request = transaction.objectStore('attacks').count();
+        request.onsuccess = () => {
+          stats.totalAttacks = request.result;
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+
+      // Count families
+      await new Promise<void>((resolve, reject) => {
+        const request = transaction.objectStore('threatFamilies').count();
+        request.onsuccess = () => {
+          stats.totalFamilies = request.result;
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+
+      // Count actors
+      await new Promise<void>((resolve, reject) => {
+        const request = transaction.objectStore('threatActors').count();
+        request.onsuccess = () => {
+          stats.totalActors = request.result;
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+
+      // Count MISP events
+      await new Promise<void>((resolve, reject) => {
+        const request = transaction.objectStore('mispEvents').count();
+        request.onsuccess = () => {
+          stats.totalMispEvents = request.result;
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+
+      return stats;
+    } catch (error) {
+      console.error('Failed to get database stats:', error);
+      return {
+        totalAttacks: 0,
+        totalFamilies: 0,
+        totalActors: 0,
+        totalMispEvents: 0,
+        dataRange: { oldest: null, newest: null }
+      };
+    }
   }
 
   // Close database connection
   close(): void {
-    this.db.close();
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
   }
 }
 
